@@ -1,0 +1,14 @@
+#include "update_state.h"
+#include "launchcore/storage.h"
+
+launchcore_status_t launchcore_update_write(const void *data, size_t len)
+{
+    launchcore_update_state_t *state = launchcore_update_state();
+    if (!state->active || data == 0) return LAUNCHCORE_ERR_BAD_STATE;
+    if (len > (size_t)(launchcore_slot_size(state->slot) - state->offset)) return LAUNCHCORE_ERR_NO_SPACE;
+    if (launchcore_storage_driver()->write(launchcore_slot_base(state->slot) + state->offset, data, (uint32_t)len) != LAUNCHCORE_STORAGE_OK) {
+        return LAUNCHCORE_ERR_FLASH;
+    }
+    state->offset += (uint32_t)len;
+    return LAUNCHCORE_OK;
+}

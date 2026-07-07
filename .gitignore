@@ -1,0 +1,10 @@
+build/
+build-*/
+.idea/
+*.launchcore.img
+*.bin
+*.elf
+*.a
+__pycache__/
+.pytest_cache/
+/SEDS_LaunchCore_Spec.md

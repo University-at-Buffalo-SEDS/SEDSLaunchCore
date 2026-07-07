@@ -1,0 +1,3 @@
+#pragma once
+
+#define LAUNCHCORE_INTERNAL_FLASH_BASE 0x08000000u

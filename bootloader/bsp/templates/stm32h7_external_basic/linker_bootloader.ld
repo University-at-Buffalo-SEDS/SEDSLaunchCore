@@ -1,0 +1,6 @@
+/* STM32H7 external-flash template. Configure MPU/cache/QSPI/OSPI during porting. */
+MEMORY
+{
+  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K
+  RAM (rwx)  : ORIGIN = 0x24000000, LENGTH = 512K
+}
