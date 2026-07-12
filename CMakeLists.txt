@@ -4,6 +4,7 @@ project(seds_launchcore C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(LAUNCHCORE_BOARD "stm32h7_extflash_example" CACHE STRING "Board port to build")
+set(LAUNCHCORE_CPU "" CACHE STRING "ARM Cortex-M CPU for custom STM32 board ports, e.g. cortex-m4, cortex-m7, cortex-m33.")
 
 include(CTest)
 
@@ -45,6 +46,11 @@ foreach(optional_source storage_qspi.c storage_ospi.c storage_spi.c storage_exte
   endif()
 endforeach()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+  include(cmake/launchcore_stm32.cmake)
+  launchcore_get_stm32_cpu(LAUNCHCORE_INFERRED_CPU "${LAUNCHCORE_BOARD}")
+endif()
+
 add_executable(launchcore_bootloader.elf
   bootloader/src/main.c
   bootloader/src/boot_jump.c
@@ -63,6 +69,17 @@ target_link_libraries(example_app_external_xip.elf PRIVATE launchcore_update_lib
 add_executable(example_app_internal_slot.elf examples/app_internal_slot/src/main.c)
 target_include_directories(example_app_internal_slot.elf PRIVATE update_lib/include)
 target_link_libraries(example_app_internal_slot.elf PRIVATE launchcore_update_lib)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+  foreach(arm_target
+      launchcore_core
+      launchcore_update_lib
+      launchcore_bootloader.elf
+      example_app_external_xip.elf
+      example_app_internal_slot.elf)
+    launchcore_apply_arm_options(${arm_target} ${LAUNCHCORE_INFERRED_CPU})
+  endforeach()
+endif()
 
 if(BUILD_TESTING)
   add_executable(test_image_header tests/unit/test_image_header.c)

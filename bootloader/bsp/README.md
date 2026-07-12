@@ -9,6 +9,7 @@ as `LAUNCHCORE_BOARD`:
 
 ```sh
 python3 build.py build --board stm32g4_internal_basic
+python3 build.py build --board stm32h5_internal_basic
 python3 build.py build --board stm32h7_external_basic
 python3 build.py build --board stm32u7_external_basic
 ```
@@ -23,6 +24,8 @@ Template inventory:
 
 - `templates/stm32g4_internal_basic`
 - `templates/stm32g4_external_basic`
+- `templates/stm32h5_internal_basic`
+- `templates/stm32h5_external_basic`
 - `templates/stm32h7_internal_basic`
 - `templates/stm32h7_external_basic`
 - `templates/stm32u7_internal_basic`

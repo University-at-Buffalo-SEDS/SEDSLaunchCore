@@ -6,8 +6,7 @@ then jumps to a confirmed or pending application image.
 
 License: GPLv2.
 
-This repository contains the initial milestone from
-`SEDS_LaunchCore_Codex_Repo_Spec.md`:
+The current repository includes:
 
 - LaunchCore image header, CRC32, SHA-256, and validation.
 - Redundant sequence-numbered metadata with CRC protection.
@@ -34,6 +33,7 @@ Built-in basic BSP templates are also selectable through `LAUNCHCORE_BOARD`:
 
 ```sh
 python3 build.py build --board stm32g4_internal_basic
+python3 build.py build --board stm32h5_internal_basic
 python3 build.py build --board stm32h7_external_basic
 python3 build.py build --board stm32u7_external_basic
 ```
@@ -56,6 +56,8 @@ Available templates:
 
 - `stm32g4_internal_basic`
 - `stm32g4_external_basic`
+- `stm32h5_internal_basic`
+- `stm32h5_external_basic`
 - `stm32h7_internal_basic`
 - `stm32h7_external_basic`
 - `stm32u7_internal_basic`

@@ -10,6 +10,8 @@ For a new board, start from one of the built-in basic BSP templates in
 
 - `stm32g4_internal_basic`
 - `stm32g4_external_basic`
+- `stm32h5_internal_basic`
+- `stm32h5_external_basic`
 - `stm32h7_internal_basic`
 - `stm32h7_external_basic`
 - `stm32u7_internal_basic`
