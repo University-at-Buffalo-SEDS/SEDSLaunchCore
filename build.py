@@ -64,7 +64,7 @@ def command_build(args: argparse.Namespace) -> None:
 
 def command_test(args: argparse.Namespace) -> None:
     build_dir = Path(args.build_dir) if args.build_dir else default_build_dir(args.name)
-    if args.configure:
+    if args.configure or not (build_dir / "CMakeCache.txt").is_file():
         configure(args, build_dir)
         build_config(args, build_dir)
 

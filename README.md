@@ -8,6 +8,9 @@ License: GPLv2.
 
 The current repository includes:
 
+- The bootloader core itself, including startup, slot selection, image
+  validation, metadata handling, recovery, and the final jump to user code
+  under `bootloader/src/`.
 - LaunchCore image header, CRC32, SHA-256, and validation.
 - Redundant sequence-numbered metadata with CRC protection.
 - A/B slot selection with pending boot and rollback policy.
@@ -21,6 +24,13 @@ Build and test on the host:
 
 ```sh
 python3 build.py all
+```
+
+To run the tests directly, including configuring and building `build/host` when
+it does not exist yet:
+
+```sh
+python3 build.py test
 ```
 
 Build with a board port selected:
