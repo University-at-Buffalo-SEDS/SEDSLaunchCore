@@ -8,4 +8,3 @@ build-*/
 *.a
 __pycache__/
 .pytest_cache/
-/SEDS_LaunchCore_Spec.md
