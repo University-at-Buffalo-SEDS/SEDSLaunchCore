@@ -13,6 +13,7 @@ BSP_TEMPLATES = [
     "stm32g4_external_basic",
     "stm32h5_internal_basic",
     "stm32h5_external_basic",
+    "stm32h5_single_slot_external_stage",
     "stm32h7_internal_basic",
     "stm32h7_external_basic",
     "stm32u7_internal_basic",
@@ -100,6 +101,14 @@ def command_bsp_templates(args: argparse.Namespace) -> None:
         command_build(build_args)
 
 
+def command_memory_map(args: argparse.Namespace) -> None:
+    args.name = args.name or f"{args.board}-memory-map"
+    args.target = "launchcore_memory_map"
+    command_build(args)
+    build_dir = Path(args.build_dir) if args.build_dir else default_build_dir(args.name)
+    run([str(build_dir / "launchcore_memory_map")], args.dry_run)
+
+
 def flash_with_launchcore(args: argparse.Namespace) -> list[str]:
     return [
         sys.executable,
@@ -134,8 +143,8 @@ def command_flash(args: argparse.Namespace) -> None:
     run(cmd, args.dry_run)
 
 
-def add_build_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--board", help="Board port or built-in BSP template name.")
+def add_build_options(parser: argparse.ArgumentParser, board_required: bool = False) -> None:
+    parser.add_argument("--board", required=board_required, help="Board port or built-in BSP template name.")
     parser.add_argument("--name", help="Build directory name under build/. Defaults to board or host.")
     parser.add_argument("--build-dir", help="Explicit build directory.")
     parser.add_argument("--build-type", default="Debug", help="CMAKE_BUILD_TYPE value.")
@@ -169,6 +178,10 @@ def main() -> None:
     bsp_parser = subparsers.add_parser("bsp-templates", help="Build every built-in BSP template.")
     add_build_options(bsp_parser)
     bsp_parser.set_defaults(func=command_bsp_templates)
+
+    map_parser = subparsers.add_parser("memory-map", help="Build and print a board's configured memory allocation.")
+    add_build_options(map_parser, board_required=True)
+    map_parser.set_defaults(func=command_memory_map)
 
     flash_parser = subparsers.add_parser("flash", help="Flash an image using a selected flashing backend.")
     flash_parser.add_argument("--tool", choices=["launchcore", "stm32cubeprogrammer"], default="launchcore")

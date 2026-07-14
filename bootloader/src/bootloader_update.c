@@ -3,9 +3,32 @@
 #include "launchcore/metadata.h"
 #include "launchcore/platform.h"
 #include "launchcore/storage.h"
+#include "launchcore/update_status.h"
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
+
+static launchcore_update_reason_t bootloader_failure_reason(launchcore_bootloader_update_status_t status)
+{
+    if (status == LAUNCHCORE_BOOTLOADER_UPDATE_ERR_SIZE) return LAUNCHCORE_UPDATE_REASON_SIZE;
+    if (status == LAUNCHCORE_BOOTLOADER_UPDATE_ERR_BOOTLOADER_CRC) return LAUNCHCORE_UPDATE_REASON_CRC32;
+    if (status == LAUNCHCORE_BOOTLOADER_UPDATE_ERR_BOOTLOADER_HASH) return LAUNCHCORE_UPDATE_REASON_SHA256;
+    if (status == LAUNCHCORE_BOOTLOADER_UPDATE_ERR_SIGNATURE) return LAUNCHCORE_UPDATE_REASON_SIGNATURE;
+    if (status == LAUNCHCORE_BOOTLOADER_UPDATE_ERR_STORAGE) return LAUNCHCORE_UPDATE_REASON_STORAGE;
+    return LAUNCHCORE_UPDATE_REASON_HEADER;
+}
+
+static void record_bootloader_failure(launchcore_bootloader_update_status_t status)
+{
+    launchcore_metadata_t md;
+    (void)launchcore_metadata_read_latest(&md);
+    md.flags &= ~(LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_PENDING |
+        LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_CONTINUE_APP);
+    md.update_kind = LAUNCHCORE_UPDATE_KIND_BOOTLOADER;
+    md.update_attempted = 1u;
+    md.update_result = LAUNCHCORE_UPDATE_RESULT_FAILED;
+    md.update_reason = (uint8_t)bootloader_failure_reason(status);
+    (void)launchcore_metadata_commit(&md);
+}
 
 uint32_t launchcore_bootloader_update_manifest_crc(const launchcore_bootloader_update_manifest_t *manifest)
 {
@@ -37,20 +60,28 @@ launchcore_bootloader_update_status_t launchcore_bootloader_update_verify_staged
     launchcore_bootloader_update_status_t status = launchcore_bootloader_update_validate_manifest(manifest);
     if (status != LAUNCHCORE_BOOTLOADER_UPDATE_OK) return status;
 
-    uint8_t *image = (uint8_t *)malloc(manifest->bootloader_image_size);
-    if (image == NULL) return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_STORAGE;
-    if (launchcore_storage_driver()->read(manifest->bootloader_image_addr, image, manifest->bootloader_image_size) != LAUNCHCORE_STORAGE_OK) {
-        free(image);
-        return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_STORAGE;
+    uint8_t chunk[LAUNCHCORE_VALIDATE_CHUNK_SIZE];
+    launchcore_sha256_ctx_t sha256;
+    uint32_t crc32 = 0u;
+    uint32_t remaining = manifest->bootloader_image_size;
+    uint32_t address = manifest->bootloader_image_addr;
+    launchcore_sha256_init(&sha256);
+    while (remaining > 0u) {
+        uint32_t chunk_size = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+        if (launchcore_storage_driver()->read(address, chunk, chunk_size) != LAUNCHCORE_STORAGE_OK) {
+            return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_STORAGE;
+        }
+        crc32 = launchcore_crc32_update(crc32, chunk, chunk_size);
+        launchcore_sha256_update(&sha256, chunk, chunk_size);
+        address += chunk_size;
+        remaining -= chunk_size;
     }
 
-    if (launchcore_crc32(image, manifest->bootloader_image_size) != manifest->bootloader_crc32) {
-        free(image);
+    if (crc32 != manifest->bootloader_crc32) {
         return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_BOOTLOADER_CRC;
     }
     uint8_t hash[32];
-    launchcore_sha256(image, manifest->bootloader_image_size, hash);
-    free(image);
+    launchcore_sha256_final(&sha256, hash);
     if (memcmp(hash, manifest->bootloader_sha256, sizeof(hash)) != 0) {
         return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_BOOTLOADER_HASH;
     }
@@ -63,9 +94,21 @@ launchcore_bootloader_update_status_t launchcore_bootloader_update_verify_staged
 launchcore_bootloader_update_status_t launchcore_bootloader_update_apply_staged(const launchcore_bootloader_update_manifest_t *manifest)
 {
     launchcore_bootloader_update_status_t status = launchcore_bootloader_update_verify_staged(manifest);
-    if (status != LAUNCHCORE_BOOTLOADER_UPDATE_OK) return status;
+    if (status != LAUNCHCORE_BOOTLOADER_UPDATE_OK) {
+        record_bootloader_failure(status);
+        return status;
+    }
 
     if (!platform_flash_bootloader_image(manifest->bootloader_image_addr, manifest->bootloader_image_size)) {
+        launchcore_metadata_t failed;
+        (void)launchcore_metadata_read_latest(&failed);
+        failed.flags &= ~(LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_PENDING |
+            LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_CONTINUE_APP);
+        failed.update_kind = LAUNCHCORE_UPDATE_KIND_BOOTLOADER;
+        failed.update_attempted = 1u;
+        failed.update_result = LAUNCHCORE_UPDATE_RESULT_FAILED;
+        failed.update_reason = LAUNCHCORE_UPDATE_REASON_FLASH;
+        (void)launchcore_metadata_commit(&failed);
         return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_STORAGE;
     }
 
@@ -73,6 +116,10 @@ launchcore_bootloader_update_status_t launchcore_bootloader_update_apply_staged(
     (void)launchcore_metadata_read_latest(&md);
     md.flags &= ~LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_PENDING;
     md.flags |= LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_CONTINUE_APP;
+    md.update_kind = LAUNCHCORE_UPDATE_KIND_BOOTLOADER;
+    md.update_attempted = 1u;
+    md.update_result = LAUNCHCORE_UPDATE_RESULT_SUCCESS;
+    md.update_reason = LAUNCHCORE_UPDATE_REASON_NONE;
     if (launchcore_metadata_commit(&md) != LAUNCHCORE_METADATA_OK) {
         return LAUNCHCORE_BOOTLOADER_UPDATE_ERR_METADATA;
     }

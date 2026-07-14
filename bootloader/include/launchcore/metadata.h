@@ -4,10 +4,16 @@
 #include <stdint.h>
 
 #define LAUNCHCORE_METADATA_MAGIC 0x4C434D44u
-#define LAUNCHCORE_METADATA_VERSION 1u
+#define LAUNCHCORE_METADATA_VERSION 2u
 #define LAUNCHCORE_METADATA_FLAG_RECOVERY_REQUESTED (1u << 0)
 #define LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_PENDING (1u << 1)
 #define LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_CONTINUE_APP (1u << 2)
+#define LAUNCHCORE_METADATA_FLAG_APP_INSTALL_PENDING (1u << 3)
+#define LAUNCHCORE_METADATA_FLAG_DELTA_UPDATE_PENDING (1u << 4)
+#define LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_AVAILABLE (1u << 5)
+#define LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_PENDING (1u << 6)
+#define LAUNCHCORE_METADATA_FLAG_DELTA_APPLY_STARTED (1u << 7)
+#define LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_STARTED (1u << 8)
 
 typedef enum {
     LAUNCHCORE_SLOT_A = 0,
@@ -42,6 +48,16 @@ typedef struct __attribute__((packed)) {
     uint8_t slot_a_hash[32];
     uint8_t slot_b_hash[32];
     uint32_t flags;
+    uint8_t update_kind;
+    uint8_t update_attempted;
+    uint8_t update_result;
+    uint8_t update_reason;
+    uint32_t staged_app_size;
+    uint32_t staged_app_version;
+    uint8_t staged_app_hash[32];
+    uint32_t staged_app_addr;
+    uint32_t staged_bundle_base;
+    uint32_t staged_bundle_size;
     uint32_t metadata_crc32;
 } launchcore_metadata_t;
 

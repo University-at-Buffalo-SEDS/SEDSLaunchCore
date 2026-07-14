@@ -8,7 +8,9 @@
 typedef struct {
     bool active;
     launchcore_slot_id_t slot;
+    uint32_t write_base;
     uint32_t offset;
+    bool staged_install;
     launchcore_update_info_t info;
 } launchcore_update_state_t;
 

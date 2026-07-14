@@ -14,6 +14,9 @@ static const launchcore_storage_layout_t layout = {
     .bootloader_staging_size = 0x00080000u,
     .app_staging_base = 0u,
     .app_staging_size = 0u,
+    .persistent_data_base = 0x90E00000u,
+    .persistent_data_size = 0x00020000u,
+    .persistent_data_erase_size = 0x00010000u,
     .supports_xip = true,
 };
 

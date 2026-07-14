@@ -8,6 +8,16 @@
 #define LAUNCHCORE_IMAGE_HEADER_VERSION 1u
 #define LAUNCHCORE_HASH_SHA256_SIZE 32u
 #define LAUNCHCORE_SIGNATURE_MAX_SIZE 64u
+#ifndef LAUNCHCORE_VALIDATE_CHUNK_SIZE
+#define LAUNCHCORE_VALIDATE_CHUNK_SIZE 256u
+#endif
+
+typedef struct {
+    uint32_t h[8];
+    uint64_t len;
+    uint8_t block[64];
+    size_t used;
+} launchcore_sha256_ctx_t;
 
 typedef enum {
     LAUNCHCORE_IMAGE_FLAG_NONE = 0u,
@@ -50,12 +60,17 @@ typedef enum {
     LAUNCHCORE_IMAGE_ERR_IMAGE_CRC,
     LAUNCHCORE_IMAGE_ERR_IMAGE_HASH,
     LAUNCHCORE_IMAGE_ERR_VECTOR,
+    LAUNCHCORE_IMAGE_ERR_STORAGE,
 } launchcore_image_status_t;
 
 uint32_t launchcore_crc32(const void *data, size_t len);
 uint32_t launchcore_crc32_update(uint32_t crc, const void *data, size_t len);
+void launchcore_sha256_init(launchcore_sha256_ctx_t *ctx);
+void launchcore_sha256_update(launchcore_sha256_ctx_t *ctx, const void *data, size_t len);
+void launchcore_sha256_final(launchcore_sha256_ctx_t *ctx, uint8_t out[32]);
 void launchcore_sha256(const void *data, size_t len, uint8_t out[32]);
 uint32_t launchcore_image_header_crc(const launchcore_image_header_t *header);
 launchcore_image_status_t launchcore_image_validate_header(const launchcore_image_header_t *header);
 launchcore_image_status_t launchcore_image_validate(const launchcore_image_header_t *header, const void *payload);
+launchcore_image_status_t launchcore_image_validate_stored(const launchcore_image_header_t *header, uint32_t payload_addr);
 uint32_t launchcore_image_packed_version(const launchcore_image_header_t *header);

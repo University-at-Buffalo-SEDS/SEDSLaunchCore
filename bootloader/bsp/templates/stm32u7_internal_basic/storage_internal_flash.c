@@ -8,6 +8,11 @@ static const launchcore_storage_layout_t layout = {
     .metadata0_base = 0x081A0000u,
     .metadata1_base = 0x081A2000u,
     .metadata_size = 0x00002000u,
+    .bootloader_base = 0x08000000u,
+    .bootloader_size = 0x00020000u,
+    .persistent_data_base = 0x081F0000u,
+    .persistent_data_size = 0x00010000u,
+    .persistent_data_erase_size = 0x00002000u,
     .supports_xip = true,
 };
 

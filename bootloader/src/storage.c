@@ -15,6 +15,13 @@ static const launchcore_storage_layout_t mock_layout = {
     .metadata0_base = 0x00F00000u,
     .metadata1_base = 0x00F10000u,
     .metadata_size = 0x00001000u,
+    .bootloader_staging_base = 0x00C00000u,
+    .bootloader_staging_size = 0x00100000u,
+    .app_staging_base = 0x00800000u,
+    .app_staging_size = 0x00400000u,
+    .persistent_data_base = 0x00E00000u,
+    .persistent_data_size = 0x00020000u,
+    .persistent_data_erase_size = 0x00001000u,
     .supports_xip = true,
 };
 
@@ -93,4 +100,13 @@ uint32_t launchcore_slot_size(launchcore_slot_id_t slot)
 {
     const launchcore_storage_layout_t *layout = launchcore_storage_driver()->layout();
     return slot == LAUNCHCORE_SLOT_A ? layout->slot_a_size : layout->slot_b_size;
+}
+
+bool launchcore_storage_range_preserves_persistent(uint32_t addr, uint32_t len)
+{
+    const launchcore_storage_layout_t *layout = launchcore_storage_driver()->layout();
+    if (layout->persistent_data_size == 0u || len == 0u) return true;
+    uint64_t end = (uint64_t)addr + len;
+    uint64_t persistent_end = (uint64_t)layout->persistent_data_base + layout->persistent_data_size;
+    return end <= layout->persistent_data_base || persistent_end <= addr;
 }

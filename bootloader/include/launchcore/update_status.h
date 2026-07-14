@@ -1,0 +1,40 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef enum {
+    LAUNCHCORE_UPDATE_KIND_NONE = 0,
+    LAUNCHCORE_UPDATE_KIND_APPLICATION,
+    LAUNCHCORE_UPDATE_KIND_BOOTLOADER,
+} launchcore_update_kind_t;
+
+typedef enum {
+    LAUNCHCORE_UPDATE_RESULT_NONE = 0,
+    LAUNCHCORE_UPDATE_RESULT_PENDING,
+    LAUNCHCORE_UPDATE_RESULT_VALIDATED,
+    LAUNCHCORE_UPDATE_RESULT_SUCCESS,
+    LAUNCHCORE_UPDATE_RESULT_FAILED,
+} launchcore_update_result_t;
+
+typedef enum {
+    LAUNCHCORE_UPDATE_REASON_NONE = 0,
+    LAUNCHCORE_UPDATE_REASON_HEADER,
+    LAUNCHCORE_UPDATE_REASON_SIZE,
+    LAUNCHCORE_UPDATE_REASON_STORAGE,
+    LAUNCHCORE_UPDATE_REASON_CRC32,
+    LAUNCHCORE_UPDATE_REASON_SHA256,
+    LAUNCHCORE_UPDATE_REASON_METADATA_HASH,
+    LAUNCHCORE_UPDATE_REASON_SIGNATURE,
+    LAUNCHCORE_UPDATE_REASON_FLASH,
+    LAUNCHCORE_UPDATE_REASON_NOT_CONFIRMED,
+    LAUNCHCORE_UPDATE_REASON_BASE_MISMATCH,
+    LAUNCHCORE_UPDATE_REASON_DECOMPRESSION,
+} launchcore_update_reason_t;
+
+typedef struct {
+    launchcore_update_kind_t kind;
+    bool attempted;
+    launchcore_update_result_t result;
+    launchcore_update_reason_t reason;
+} launchcore_update_report_t;

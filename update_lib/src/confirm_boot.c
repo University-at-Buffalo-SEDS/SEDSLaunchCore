@@ -17,6 +17,11 @@ launchcore_status_t launchcore_confirm_boot(void)
     md.confirmed_slot = (uint8_t)active;
     md.pending_slot = LAUNCHCORE_SLOT_NONE;
     md.boot_attempts = 0u;
+    if (md.update_kind == LAUNCHCORE_UPDATE_KIND_APPLICATION &&
+        md.update_result == LAUNCHCORE_UPDATE_RESULT_VALIDATED) {
+        md.update_result = LAUNCHCORE_UPDATE_RESULT_SUCCESS;
+        md.update_reason = LAUNCHCORE_UPDATE_REASON_NONE;
+    }
     if (launchcore_metadata_commit(&md) != LAUNCHCORE_METADATA_OK) return LAUNCHCORE_ERR_METADATA;
     return LAUNCHCORE_OK;
 }

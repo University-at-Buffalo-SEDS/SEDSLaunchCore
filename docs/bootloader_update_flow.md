@@ -5,10 +5,11 @@ application A/B updates.
 
 1. The application downloads a bundle containing a bootloader image, a
    bootloader-update manifest, and the next application image.
-2. The application writes the bootloader image and app image to staging storage.
+2. The application writes the bootloader image and app image to staging storage
+   in chunks through the storage driver.
 3. Metadata is marked with `BOOTLOADER_UPDATE_PENDING`.
-4. On reset, the current bootloader validates the manifest, CRC32, SHA-256, and
-   the bootloader-specific signature.
+4. On reset, the current bootloader rereads the staged image in bounded chunks
+   and validates the manifest, CRC32, SHA-256, and bootloader-specific signature.
 5. Only after the separate bootloader signature succeeds does the current
    bootloader erase/program the protected bootloader region.
 6. The current bootloader sets `BOOTLOADER_UPDATE_CONTINUE_APP` and resets.
@@ -16,9 +17,16 @@ application A/B updates.
    normal app image policy, installs or marks it pending, then clears the
    continuation flag.
 
+The streamed bundle API accepts app-only, bootloader-only, and combined
+bundles. Use `launchcore_bundle_update_begin/write/finish` in userspace and
+`tools/mkbundle.py` when packaging. A combined bundle installs a bootloader only
+when its version is newer than `LAUNCHCORE_BOOTLOADER_VERSION`; application
+installation is deferred until after the bootloader reset boundary.
+
 The bootloader image and application image intentionally use separate trust
 decisions. A valid application signature must not authorize bootloader code, and
 a valid bootloader signature must not bypass application image validation.
+Neither image must fit in RAM during download or validation.
 
 Hardware ports must implement:
 

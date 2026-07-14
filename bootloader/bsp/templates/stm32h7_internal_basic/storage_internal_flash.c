@@ -2,12 +2,17 @@
 
 static const launchcore_storage_layout_t layout = {
     .slot_a_base = 0x08020000u,
-    .slot_a_size = 0x000C0000u,
-    .slot_b_base = 0x080E0000u,
-    .slot_b_size = 0x000C0000u,
-    .metadata0_base = 0x081A0000u,
-    .metadata1_base = 0x081C0000u,
+    .slot_a_size = 0x000A0000u,
+    .slot_b_base = 0x080C0000u,
+    .slot_b_size = 0x000A0000u,
+    .metadata0_base = 0x08160000u,
+    .metadata1_base = 0x08180000u,
     .metadata_size = 0x00020000u,
+    .bootloader_base = 0x08000000u,
+    .bootloader_size = 0x00020000u,
+    .persistent_data_base = 0x081A0000u,
+    .persistent_data_size = 0x00040000u,
+    .persistent_data_erase_size = 0x00020000u,
     .supports_xip = true,
 };
 

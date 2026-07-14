@@ -270,9 +270,21 @@ typedef struct {
     uint32_t bootloader_staging_size;
     uint32_t app_staging_base;
     uint32_t app_staging_size;
+    uint32_t persistent_data_base;
+    uint32_t persistent_data_size;
+    uint32_t persistent_data_erase_size;
+    uint32_t slot_erase_size;
+    bool slot_b_is_delta;
     bool supports_xip;
 } launchcore_storage_layout_t;
 ```
+
+The persistent region contains two equal erase-aligned journal banks and must
+not overlap any region erased during application or bootloader installation.
+`slot_b_size == 0` selects single-slot installation through `app_staging`.
+`slot_b_is_delta` instead selects a two-region policy where Slot A contains the
+complete executable application and Slot B contains a compressed reversible
+delta. `slot_erase_size` is mandatory in that mode.
 
 ## 8. Board Port Interface
 
@@ -350,6 +362,16 @@ Behavior:
 - `launchcore_update_abort()` clears an incomplete update state.
 - `launchcore_confirm_boot()` confirms the currently running pending image.
 - `launchcore_request_recovery()` records a recovery request in metadata.
+- `launchcore_get_update_report()` returns the bootloader-owned attempted,
+  result, and failure-reason state retained for fallback userspace.
+- `launchcore_bundle_update_begin/write/finish()` streams app-only,
+  bootloader-only, or combined bundles to staging.
+- `launchcore_delta_update_begin/write/finish()` streams an exact-base,
+  reversible block patch to a delta-designated Slot B.
+
+Persistent settings use `launchcore_persist_init/get/set/delete`. Values are
+bounded by `LAUNCHCORE_PERSIST_MAX_VALUE_SIZE`; records and bank headers carry
+CRCs and sequence/generation counters.
 
 ## 11. Bootloader Update Flow
 
@@ -372,6 +394,11 @@ Required behavior:
 Default or template implementations must fail closed for signature verification
 and bootloader flashing.
 
+Combined bundles install a strictly newer signed bootloader first, set the
+continuation flag, and reset. The new bootloader then validates and installs the
+staged application. Bootloader-only bundles stop after replacement; app-only
+bundles proceed directly to normal application installation.
+
 ## 12. Recovery Protocol
 
 The recovery parser exposes:
@@ -383,6 +410,11 @@ launchcore_recovery_status_t launchcore_recovery_handle_command(
     size_t response_len);
 void launchcore_recovery_run(void);
 ```
+
+Binary recovery transports may install a full single-slot image with
+`launchcore_recovery_install_begin/write/finish`. This path runs entirely in the
+bootloader, preserves the persistent partition, and does not provide A/B
+rollback.
 
 Supported command strings are intentionally minimal and board-transport
 independent. Recovery mode is entered when requested by the board, requested by

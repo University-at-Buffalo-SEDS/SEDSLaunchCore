@@ -1,13 +1,6 @@
 #include "launchcore/image.h"
 #include <string.h>
 
-typedef struct {
-    uint32_t h[8];
-    uint64_t len;
-    uint8_t block[64];
-    size_t used;
-} sha256_ctx_t;
-
 static const uint32_t k[64] = {
     0x428a2f98u,0x71374491u,0xb5c0fbcfu,0xe9b5dba5u,0x3956c25bu,0x59f111f1u,0x923f82a4u,0xab1c5ed5u,
     0xd807aa98u,0x12835b01u,0x243185beu,0x550c7dc3u,0x72be5d74u,0x80deb1feu,0x9bdc06a7u,0xc19bf174u,
@@ -23,7 +16,7 @@ static uint32_t rotr(uint32_t x, uint32_t n) { return (x >> n) | (x << (32u - n)
 static uint32_t load_be(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
 static void store_be(uint8_t *p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 
-static void transform(sha256_ctx_t *ctx, const uint8_t block[64])
+static void transform(launchcore_sha256_ctx_t *ctx, const uint8_t block[64])
 {
     uint32_t w[64];
     for (uint32_t i = 0; i < 16u; ++i) w[i] = load_be(&block[i * 4u]);
@@ -47,7 +40,7 @@ static void transform(sha256_ctx_t *ctx, const uint8_t block[64])
     ctx->h[4] += e; ctx->h[5] += f; ctx->h[6] += g; ctx->h[7] += h;
 }
 
-static void init(sha256_ctx_t *ctx)
+void launchcore_sha256_init(launchcore_sha256_ctx_t *ctx)
 {
     ctx->h[0] = 0x6a09e667u; ctx->h[1] = 0xbb67ae85u; ctx->h[2] = 0x3c6ef372u; ctx->h[3] = 0xa54ff53au;
     ctx->h[4] = 0x510e527fu; ctx->h[5] = 0x9b05688cu; ctx->h[6] = 0x1f83d9abu; ctx->h[7] = 0x5be0cd19u;
@@ -55,15 +48,16 @@ static void init(sha256_ctx_t *ctx)
     ctx->used = 0u;
 }
 
-static void update(sha256_ctx_t *ctx, const uint8_t *data, size_t len)
+void launchcore_sha256_update(launchcore_sha256_ctx_t *ctx, const void *data, size_t len)
 {
+    const uint8_t *bytes = (const uint8_t *)data;
     ctx->len += (uint64_t)len * 8u;
     while (len > 0u) {
         size_t n = 64u - ctx->used;
         if (n > len) n = len;
-        memcpy(&ctx->block[ctx->used], data, n);
+        memcpy(&ctx->block[ctx->used], bytes, n);
         ctx->used += n;
-        data += n;
+        bytes += n;
         len -= n;
         if (ctx->used == 64u) {
             transform(ctx, ctx->block);
@@ -72,7 +66,7 @@ static void update(sha256_ctx_t *ctx, const uint8_t *data, size_t len)
     }
 }
 
-static void final(sha256_ctx_t *ctx, uint8_t out[32])
+void launchcore_sha256_final(launchcore_sha256_ctx_t *ctx, uint8_t out[32])
 {
     ctx->block[ctx->used++] = 0x80u;
     if (ctx->used > 56u) {
@@ -88,8 +82,8 @@ static void final(sha256_ctx_t *ctx, uint8_t out[32])
 
 void launchcore_sha256(const void *data, size_t len, uint8_t out[32])
 {
-    sha256_ctx_t ctx;
-    init(&ctx);
-    update(&ctx, (const uint8_t *)data, len);
-    final(&ctx, out);
+    launchcore_sha256_ctx_t ctx;
+    launchcore_sha256_init(&ctx);
+    launchcore_sha256_update(&ctx, data, len);
+    launchcore_sha256_final(&ctx, out);
 }

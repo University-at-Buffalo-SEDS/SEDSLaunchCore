@@ -29,6 +29,11 @@ typedef struct {
     uint32_t bootloader_staging_size;
     uint32_t app_staging_base;
     uint32_t app_staging_size;
+    uint32_t persistent_data_base;
+    uint32_t persistent_data_size;
+    uint32_t persistent_data_erase_size;
+    uint32_t slot_erase_size;
+    bool slot_b_is_delta;
     bool supports_xip;
 } launchcore_storage_layout_t;
 
@@ -47,3 +52,4 @@ const launchcore_storage_driver_t *launchcore_storage_driver(void);
 launchcore_storage_status_t launchcore_storage_init(void);
 uint32_t launchcore_slot_base(launchcore_slot_id_t slot);
 uint32_t launchcore_slot_size(launchcore_slot_id_t slot);
+bool launchcore_storage_range_preserves_persistent(uint32_t addr, uint32_t len);

@@ -34,6 +34,9 @@ launchcore_recovery_status_t launchcore_recovery_handle_command(const char *comm
     if (strncmp(command, "ERASE_SLOT ", 11) == 0) {
         launchcore_slot_id_t slot = parse_slot(command[11]);
         if (!launchcore_slot_id_is_valid(slot)) return LAUNCHCORE_RECOVERY_ERR_ARG;
+        if (!launchcore_storage_range_preserves_persistent(launchcore_slot_base(slot), launchcore_slot_size(slot))) {
+            return LAUNCHCORE_RECOVERY_ERR_ARG;
+        }
         if (storage->erase(launchcore_slot_base(slot), launchcore_slot_size(slot)) != LAUNCHCORE_STORAGE_OK) return LAUNCHCORE_RECOVERY_ERR_STORAGE;
         snprintf(response, response_len, "OK");
         return LAUNCHCORE_RECOVERY_OK;
