@@ -143,6 +143,28 @@ def command_flash(args: argparse.Namespace) -> None:
     run(cmd, args.dry_run)
 
 
+def command_factory_image(args: argparse.Namespace) -> None:
+    cmd = [
+        sys.executable,
+        str(ROOT / "tools" / "mkfactory.py"),
+        "--bootloader",
+        str(args.bootloader),
+        "--bootloader-base",
+        args.bootloader_base,
+        "--app",
+        str(args.app),
+        "--metadata-base",
+        args.metadata_base,
+        "--output",
+        str(args.output),
+        "--max-output-size",
+        args.max_output_size,
+    ]
+    if args.app_base:
+        cmd.extend(["--app-base", args.app_base])
+    run(cmd, args.dry_run)
+
+
 def add_build_options(parser: argparse.ArgumentParser, board_required: bool = False) -> None:
     parser.add_argument("--board", required=board_required, help="Board port or built-in BSP template name.")
     parser.add_argument("--name", help="Build directory name under build/. Defaults to board or host.")
@@ -195,6 +217,19 @@ def main() -> None:
     flash_parser.add_argument("--reset", action="store_true", help="Reset after flashing when supported.")
     flash_parser.add_argument("--dry-run", action="store_true", help="Print commands without running them.")
     flash_parser.set_defaults(func=command_flash)
+
+    factory_parser = subparsers.add_parser(
+        "factory-image", help="Combine a raw bootloader and packaged application into one flat binary."
+    )
+    factory_parser.add_argument("--bootloader", required=True, type=Path, help="Raw bootloader binary.")
+    factory_parser.add_argument("--bootloader-base", required=True, help="Bootloader load address, e.g. 0x08000000.")
+    factory_parser.add_argument("--app", required=True, type=Path, help="Packaged LaunchCore application image.")
+    factory_parser.add_argument("--app-base", help="Verify the slot address stored in the app header.")
+    factory_parser.add_argument("--metadata-base", required=True, help="Board metadata0 address.")
+    factory_parser.add_argument("--output", required=True, type=Path, help="Combined flat binary output.")
+    factory_parser.add_argument("--max-output-size", default="0x4000000", help="Maximum flat output size.")
+    factory_parser.add_argument("--dry-run", action="store_true", help="Print commands without running them.")
+    factory_parser.set_defaults(func=command_factory_image)
 
     args = parser.parse_args()
     args.func(args)
