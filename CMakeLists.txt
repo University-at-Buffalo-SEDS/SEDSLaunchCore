@@ -124,6 +124,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_persist PRIVATE launchcore_core)
   add_test(NAME persist COMMAND test_persist)
 
+  add_executable(test_recovery tests/unit/test_recovery.c)
+  target_link_libraries(test_recovery PRIVATE launchcore_core)
+  add_test(NAME recovery COMMAND test_recovery)
+
   add_executable(test_single_slot_install tests/unit/test_single_slot_install.c)
   target_link_libraries(test_single_slot_install PRIVATE launchcore_update_lib)
   add_test(NAME single_slot_install COMMAND test_single_slot_install)
