@@ -1,7 +1,11 @@
 # Porting Guide
 
 Create a concrete board port under `bootloader/boards`. Provide
-`board_config.h`, `platform.c`, a storage driver, and `linker_bootloader.ld`.
+`board_config.h`, `platform.c`, and a storage driver. For GNU ld builds,
+`launchcore_generate_linker_scripts()` can generate the bootloader and
+application scripts directly from the addresses in `board_config.h`; a
+checked-in `linker_bootloader.ld` is only needed for custom section layouts or
+other linker families.
 Keep flash erase and write rules inside the storage driver and validate
 stack/reset ranges before jumping to an application.
 
@@ -38,3 +42,31 @@ For a new board, start from one of the built-in basic BSP templates in
 These templates are intentionally not board examples. They are family/layout
 starting points with placeholder flash drivers, conservative vector validation,
 and linker memory regions that must be adjusted for the exact part number.
+
+## Generated GNU linker scripts
+
+Include `cmake/launchcore_stm32.cmake` and call:
+
+```cmake
+launchcore_generate_linker_scripts(
+  BSP_CONFIG "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h"
+  LAYOUT_PREFIX BOARD
+  OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launchcore-linker"
+  OUT_BOOTLOADER_SCRIPT LAUNCHCORE_BOOTLOADER_LINKER
+  OUT_APPLICATION_SCRIPT LAUNCHCORE_APPLICATION_LINKER)
+```
+
+The configuration must define the internal flash/SRAM base and size,
+bootloader size, and `${LAYOUT_PREFIX}_SLOT_A_BASE`, `_SLOT_A_SIZE`, and
+`_VECTOR_TABLE`. The generated memory regions are named `BOOTLOADER_FLASH`,
+`BOOTLOADER_RAM`, `FIRMWARE_FLASH`, and `FIRMWARE_RAM`, so GNU ld's
+`--print-memory-usage` output identifies each image.
+
+`launchcore_add_memory_report()` adds an aggregate post-link report with
+Bootloader, Firmware, and Total linked flash rows. Binary sizes are used so the
+combined figure matches what is emitted for installation.
+
+LaunchCore intentionally does not add `--specs=nosys.specs`. The bootloader no
+longer depends on hosted I/O, and adding that spec causes recent GNU Arm
+toolchains to emit `_close`, `_read`, `_write`, and `_lseek` warnings even when
+those functions are discarded.

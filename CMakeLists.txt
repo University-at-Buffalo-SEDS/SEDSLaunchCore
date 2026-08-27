@@ -100,6 +100,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
 endif()
 
 if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME cmake_linker_generation
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cmake_integration.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}")
+
   add_executable(test_image_header tests/unit/test_image_header.c)
   target_link_libraries(test_image_header PRIVATE launchcore_core)
   add_test(NAME image_header COMMAND test_image_header)

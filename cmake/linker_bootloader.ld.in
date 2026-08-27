@@ -1,0 +1,72 @@
+ENTRY(Reset_Handler)
+
+PHDRS
+{
+  text PT_LOAD FLAGS(5);
+  data PT_LOAD FLAGS(6);
+}
+
+MEMORY
+{
+  BOOTLOADER_FLASH (rx)  : ORIGIN = @LC_flash_base@, LENGTH = @LC_boot_size@
+  BOOTLOADER_RAM   (rwx) : ORIGIN = @LC_ram_base@, LENGTH = @LC_ram_size@
+}
+
+_estack = ORIGIN(BOOTLOADER_RAM) + LENGTH(BOOTLOADER_RAM);
+_Min_Heap_Size = 0;
+_Min_Stack_Size = 0x800;
+
+SECTIONS
+{
+  .isr_vector : { . = ALIGN(4); KEEP(*(.isr_vector)); . = ALIGN(4); }
+    > BOOTLOADER_FLASH :text
+  .text :
+  {
+    . = ALIGN(4);
+    *(.text .text*) *(.rodata .rodata*) *(.glue_7 .glue_7t)
+    KEEP(*(.init)) KEEP(*(.fini))
+    . = ALIGN(4); _etext = .;
+  } > BOOTLOADER_FLASH :text
+  .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) }
+    > BOOTLOADER_FLASH :text
+  .ARM :
+  {
+    __exidx_start = .; *(.ARM.exidx*) __exidx_end = .;
+  } > BOOTLOADER_FLASH :text
+  .preinit_array :
+  {
+    PROVIDE_HIDDEN(__preinit_array_start = .);
+    KEEP(*(.preinit_array*))
+    PROVIDE_HIDDEN(__preinit_array_end = .);
+  } > BOOTLOADER_FLASH :text
+  .init_array :
+  {
+    PROVIDE_HIDDEN(__init_array_start = .);
+    KEEP(*(SORT(.init_array.*))) KEEP(*(.init_array*))
+    PROVIDE_HIDDEN(__init_array_end = .);
+  } > BOOTLOADER_FLASH :text
+  .fini_array :
+  {
+    PROVIDE_HIDDEN(__fini_array_start = .);
+    KEEP(*(SORT(.fini_array.*))) KEEP(*(.fini_array*))
+    PROVIDE_HIDDEN(__fini_array_end = .);
+  } > BOOTLOADER_FLASH :text
+
+  _sidata = LOADADDR(.data);
+  .data :
+  {
+    . = ALIGN(4); _sdata = .; *(.data .data*) . = ALIGN(4); _edata = .;
+  } > BOOTLOADER_RAM AT > BOOTLOADER_FLASH :data
+  .bss (NOLOAD) :
+  {
+    . = ALIGN(4); _sbss = .; __bss_start__ = _sbss;
+    *(.bss .bss*) *(COMMON)
+    . = ALIGN(4); _ebss = .; __bss_end__ = _ebss;
+  } > BOOTLOADER_RAM :NONE
+  ._user_heap_stack (NOLOAD) :
+  {
+    . = ALIGN(8); PROVIDE(end = .); PROVIDE(_end = .);
+    . = . + _Min_Heap_Size + _Min_Stack_Size; . = ALIGN(8);
+  } > BOOTLOADER_RAM :NONE
+  /DISCARD/ : { *(.note.GNU-stack) }
+}
