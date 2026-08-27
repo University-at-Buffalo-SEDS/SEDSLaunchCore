@@ -100,6 +100,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
 endif()
 
 if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME cmake_linker_generation
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cmake_integration.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}")
+
   add_executable(test_image_header tests/unit/test_image_header.c)
   target_link_libraries(test_image_header PRIVATE launchcore_core)
   add_test(NAME image_header COMMAND test_image_header)
@@ -123,6 +128,10 @@ if(BUILD_TESTING)
   add_executable(test_persist tests/unit/test_persist.c)
   target_link_libraries(test_persist PRIVATE launchcore_core)
   add_test(NAME persist COMMAND test_persist)
+
+  add_executable(test_recovery tests/unit/test_recovery.c)
+  target_link_libraries(test_recovery PRIVATE launchcore_core)
+  add_test(NAME recovery COMMAND test_recovery)
 
   add_executable(test_single_slot_install tests/unit/test_single_slot_install.c)
   target_link_libraries(test_single_slot_install PRIVATE launchcore_update_lib)

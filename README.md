@@ -106,6 +106,28 @@ python3 tools/mkbundle.py --bootloader launchcore_bootloader.bin \
   --app app.launchcore.img --output update.launchcore.bundle
 ```
 
+Create one factory-flash binary containing a bootloader and any separately
+built, packaged application image:
+
+```sh
+python3 build.py factory-image --bootloader launchcore_bootloader.bin \
+  --bootloader-base 0x08000000 --app app-internal.launchcore.img \
+  --metadata-base 0x08070000 \
+  --output launchcore_factory.bin
+```
+
+The application address is read from its LaunchCore image header. The command
+also creates the initial metadata record needed to boot the application as a
+confirmed Slot A image on a blank device. It fills gaps with `0xFF`, verifies
+that the regions do not overlap, validates the packaged application, and
+defaults to a 64 MiB output-size safety limit. Use the board's `metadata copy 0`
+address from `python3 build.py memory-map --board <board>` for
+`--metadata-base`. A flat `.bin` is therefore
+intended for regions on the same flash device. For layouts with internal
+bootloader flash and an application at an external address such as
+`0x90000000`, program the artifacts separately or use the streamed combined
+update bundle above; padding that range into a flat binary would be impractical.
+
 Create a delta only when it is smaller than a full packaged image:
 
 ```sh
