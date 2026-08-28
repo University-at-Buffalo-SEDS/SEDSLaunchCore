@@ -14,7 +14,7 @@ launchcore_image_status_t launchcore_image_validate_header(const launchcore_imag
     if (header->header_version != LAUNCHCORE_IMAGE_HEADER_VERSION) return LAUNCHCORE_IMAGE_ERR_VERSION;
     if (header->header_size < sizeof(launchcore_image_header_t) || header->image_size == 0u) return LAUNCHCORE_IMAGE_ERR_SIZE;
     if (header->header_crc32 != launchcore_image_header_crc(header)) return LAUNCHCORE_IMAGE_ERR_HEADER_CRC;
-    if (header->vector_table_addr < header->slot_base_addr + header->header_size) return LAUNCHCORE_IMAGE_ERR_VECTOR;
+    if (header->vector_table_addr != header->slot_base_addr + header->header_size) return LAUNCHCORE_IMAGE_ERR_VECTOR;
     if (header->entry_addr == 0u || (header->entry_addr & 1u) == 0u) return LAUNCHCORE_IMAGE_ERR_VECTOR;
     return LAUNCHCORE_IMAGE_OK;
 }

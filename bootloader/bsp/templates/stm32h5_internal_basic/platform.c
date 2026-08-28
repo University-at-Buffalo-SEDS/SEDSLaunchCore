@@ -16,10 +16,10 @@ void platform_feed_watchdog(void) {}
 
 bool platform_validate_app_vector(uint32_t vector_table_addr, uint32_t stack_pointer, uint32_t reset_handler)
 {
-    bool vector_ok = vector_table_addr >= 0x08020100u && vector_table_addr < 0x081E0000u;
+    bool vector_ok = vector_table_addr >= 0x08020200u && vector_table_addr < 0x081E0000u;
     bool stack_ok = stack_pointer >= LAUNCHCORE_INTERNAL_SRAM_BASE &&
                     stack_pointer < LAUNCHCORE_INTERNAL_SRAM_BASE + LAUNCHCORE_INTERNAL_SRAM_SIZE;
-    bool reset_ok = reset_handler >= 0x08020100u && reset_handler < 0x081E0000u && (reset_handler & 1u) != 0u;
+    bool reset_ok = reset_handler >= 0x08020200u && reset_handler < 0x081E0000u && (reset_handler & 1u) != 0u;
     return vector_ok && stack_ok && reset_ok;
 }
 

@@ -9,7 +9,8 @@ IMAGE_MAGIC = 0x4C43494D
 HEADER_VERSION = 1
 HEADER_FORMAT_WITHOUT_CRC = "<IHHII32sIIIIIIIIIIII64s"
 HEADER_STRUCT_SIZE = struct.calcsize(HEADER_FORMAT_WITHOUT_CRC) + 4
-DEFAULT_HEADER_SIZE = 0x100
+DEFAULT_HEADER_SIZE = 0x200
+DEFAULT_VECTOR_ALIGNMENT = 0x200
 FLAG_XIP = 1 << 0
 FLAG_COPY_RAM = 1 << 1
 
@@ -67,12 +68,24 @@ def main() -> None:
     parser.add_argument("--entry", type=parse_u32)
     parser.add_argument("--version", required=True)
     parser.add_argument("--header-size", type=parse_u32, default=DEFAULT_HEADER_SIZE)
+    parser.add_argument("--vector-alignment", type=parse_u32, default=DEFAULT_VECTOR_ALIGNMENT)
     parser.add_argument("--min-bootloader-version", type=parse_u32, default=1)
     parser.add_argument("--xip", action="store_true")
     parser.add_argument("--copy-ram", action="store_true")
     args = parser.parse_args()
     if args.header_size < HEADER_STRUCT_SIZE:
         raise SystemExit(f"--header-size must be at least {HEADER_STRUCT_SIZE}")
+    if args.vector_alignment == 0 or args.vector_alignment & (args.vector_alignment - 1):
+        raise SystemExit("--vector-alignment must be a non-zero power of two")
+    if args.vector_table % args.vector_alignment:
+        raise SystemExit(
+            f"--vector-table must be aligned to 0x{args.vector_alignment:x} bytes"
+        )
+    if args.vector_table != args.slot_base + args.header_size:
+        raise SystemExit(
+            "--vector-table must equal --slot-base + --header-size so the "
+            "packaged payload is written at its linked address"
+        )
 
     payload = args.input.read_bytes()
     if len(payload) < 8:

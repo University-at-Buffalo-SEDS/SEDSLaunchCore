@@ -15,7 +15,7 @@ int main(void)
     launchcore_sha256(payload, sizeof(payload), h.image_sha256);
     h.version_major = 1;
     h.slot_base_addr = 0x90000000u;
-    h.vector_table_addr = 0x90000100u;
+    h.vector_table_addr = h.slot_base_addr + h.header_size;
     h.entry_addr = 0x90000105u;
     h.header_crc32 = launchcore_image_header_crc(&h);
     assert(launchcore_image_validate_header(&h) == LAUNCHCORE_IMAGE_OK);

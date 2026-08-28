@@ -94,7 +94,7 @@ Create and inspect an image:
 
 ```sh
 python3 tools/mkimage.py --input app.bin --output app.launchcore.img \
-  --slot-base 0x90000000 --vector-table 0x90000100 --version 1.0.0 --xip
+  --slot-base 0x90000000 --vector-table 0x90000200 --version 1.0.0 --xip
 python3 tools/inspect_image.py app.launchcore.img
 ```
 

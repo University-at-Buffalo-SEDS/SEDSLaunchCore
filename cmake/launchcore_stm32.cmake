@@ -61,10 +61,11 @@ endfunction()
 # remains the single source of truth; applications no longer need checked-in
 # copies of a linker script just to change partition addresses.
 function(launchcore_generate_linker_scripts)
-  set(one_value_args BSP_CONFIG LAYOUT_PREFIX OUTPUT_DIRECTORY
+  set(one_value_args BSP_CONFIG LAYOUT_PREFIX OUTPUT_DIRECTORY VECTOR_ALIGNMENT
       OUT_BOOTLOADER_SCRIPT OUT_APPLICATION_SCRIPT)
   cmake_parse_arguments(LINKER "" "${one_value_args}" "" ${ARGN})
-  foreach(required_arg IN LISTS one_value_args)
+  foreach(required_arg BSP_CONFIG LAYOUT_PREFIX OUTPUT_DIRECTORY
+                       OUT_BOOTLOADER_SCRIPT OUT_APPLICATION_SCRIPT)
     if(NOT LINKER_${required_arg})
       message(FATAL_ERROR "launchcore_generate_linker_scripts requires ${required_arg}")
     endif()
@@ -84,6 +85,15 @@ function(launchcore_generate_linker_scripts)
   math(EXPR lc_firmware_size "${lc_slot_size} - ${lc_header_size}")
   if(lc_header_size LESS 0 OR lc_firmware_size LESS_EQUAL 0)
     message(FATAL_ERROR "Invalid Slot A/vector-table layout in ${layout_file}")
+  endif()
+  if(NOT LINKER_VECTOR_ALIGNMENT)
+    set(LINKER_VECTOR_ALIGNMENT 0x200)
+  endif()
+  math(EXPR lc_vector_remainder "${lc_vector_table} % ${LINKER_VECTOR_ALIGNMENT}")
+  if(NOT lc_vector_remainder EQUAL 0)
+    message(FATAL_ERROR
+      "Vector table 0x${lc_vector_table} in ${layout_file} is not aligned to "
+      "${LINKER_VECTOR_ALIGNMENT} bytes")
   endif()
 
   foreach(value flash_base flash_size ram_base ram_size boot_size slot_base
