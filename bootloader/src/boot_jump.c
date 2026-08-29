@@ -24,6 +24,10 @@ void launchcore_jump_to_image(uint32_t vector_table_addr)
     launchcore_cortex_set_msp(app_sp);
     launchcore_cortex_dsb();
     launchcore_cortex_isb();
+    /* Reset entry normally starts with PRIMASK clear. Restore that contract
+     * after the bootloader's critical handoff section so application timer and
+     * peripheral interrupts can run immediately. */
+    launchcore_cortex_enable_irq();
     ((launchcore_entry_t)app_pc)();
 }
 #else

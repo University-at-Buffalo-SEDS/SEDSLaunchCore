@@ -27,6 +27,11 @@ static inline void launchcore_cortex_disable_irq(void)
     __asm volatile("cpsid i" ::: "memory");
 }
 
+static inline void launchcore_cortex_enable_irq(void)
+{
+    __asm volatile("cpsie i" ::: "memory");
+}
+
 static inline void launchcore_cortex_set_msp(uint32_t value)
 {
     __asm volatile("msr msp, %0" : : "r"(value) : "memory");
