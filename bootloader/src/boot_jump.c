@@ -3,7 +3,22 @@
 #include "launchcore/platform.h"
 
 #if defined(__arm__) || defined(__thumb__)
-typedef void (*launchcore_entry_t)(void);
+
+/* This must be a separate naked, non-returning routine. Changing MSP inside a
+ * normal C function leaves its compiler-generated epilogue using the
+ * application's pristine stack. On a full-descending Cortex-M stack that can
+ * make the epilogue read immediately above SRAM before the reset handler is
+ * reached. Keep both the stack switch and branch in one assembly-only tail. */
+__attribute__((naked, noreturn))
+static void launchcore_cortex_start_application(uint32_t app_sp, uint32_t app_pc)
+{
+    __asm volatile(
+        "msr msp, r0\n"
+        "dsb 0xF\n"
+        "isb 0xF\n"
+        "cpsie i\n"
+        "bx r1\n");
+}
 
 void launchcore_jump_to_image(uint32_t vector_table_addr)
 {
@@ -21,14 +36,11 @@ void launchcore_jump_to_image(uint32_t vector_table_addr)
     }
     platform_deinit_before_jump();
     LAUNCHCORE_SCB->VTOR = vector_table_addr;
-    launchcore_cortex_set_msp(app_sp);
-    launchcore_cortex_dsb();
-    launchcore_cortex_isb();
     /* Reset entry normally starts with PRIMASK clear. Restore that contract
      * after the bootloader's critical handoff section so application timer and
-     * peripheral interrupts can run immediately. */
-    launchcore_cortex_enable_irq();
-    ((launchcore_entry_t)app_pc)();
+     * peripheral interrupts can run immediately. The assembly tail changes
+     * MSP only after all C stack access has ended. */
+    launchcore_cortex_start_application(app_sp, app_pc);
 }
 #else
 void launchcore_jump_to_image(uint32_t vector_table_addr)
