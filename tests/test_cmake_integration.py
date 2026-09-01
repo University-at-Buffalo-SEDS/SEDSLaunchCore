@@ -8,6 +8,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(sys.argv[1]).resolve()
@@ -89,25 +90,55 @@ launchcore_generate_linker_scripts(BSP_CONFIG \"${{CMAKE_SOURCE_DIR}}/board_conf
             root = Path(directory)
             boot = root / "boot.bin"
             firmware = root / "firmware.bin"
+            boot_elf = root / "boot.elf"
+            firmware_elf = root / "firmware.elf"
             boot.write_bytes(bytes(10_040))
             firmware.write_bytes(bytes(470_276))
+            boot_elf.touch()
+            firmware_elf.touch()
             old_argv = sys.argv
             sys.argv = [
                 "memory_report.py", "--bootloader", str(boot),
-                "--firmware", str(firmware), "--bootloader-capacity", "0x4000",
+                "--firmware", str(firmware),
+                "--bootloader-elf", str(boot_elf),
+                "--firmware-elf", str(firmware_elf),
+                "--size-tool", "arm-none-eabi-size",
+                "--bootloader-capacity", "0x4000",
                 "--firmware-capacity", "0x73f00", "--total-flash", "0x80000",
+                "--ram-capacity", "0x1c000",
             ]
             try:
                 output = StringIO()
-                with redirect_stdout(output):
+                with patch.object(
+                    memory_report, "ram_used_from_size", side_effect=[2_144, 106_456]
+                ), redirect_stdout(output):
                     self.assertEqual(memory_report.main(), 0)
             finally:
                 sys.argv = old_argv
             report = output.getvalue()
-            self.assertIn("Bootloader", report)
-            self.assertIn("Firmware", report)
-            self.assertIn("Total linked", report)
-            self.assertIn("480316 B", report)
+            self.assertIn("Bootloader flash", report)
+            self.assertIn("Firmware flash", report)
+            self.assertIn("Total flash", report)
+            self.assertIn("480,316 B (469.06 KiB)", report)
+            self.assertIn("Bootloader RAM", report)
+            self.assertIn("2,144 B (2.09 KiB)", report)
+            self.assertIn("Firmware RAM", report)
+            self.assertIn("106,456 B (103.96 KiB)", report)
+            self.assertIn("Peak image RAM", report)
+            self.assertIn("images execute independently", report)
+
+    def test_ram_usage_is_initialized_data_plus_bss(self):
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="   text\t   data\t    bss\t    dec\t    hex\tfilename\n"
+                   " 10000\t    512\t   4096\t  14608\t   3910\tfirmware.elf\n",
+            stderr="",
+        )
+        with patch.object(subprocess, "run", return_value=completed):
+            self.assertEqual(
+                memory_report.ram_used_from_size(Path("size"), Path("firmware.elf")),
+                4_608,
+            )
 
 
 if __name__ == "__main__":
