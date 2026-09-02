@@ -86,8 +86,8 @@ def main() -> int:
         ("Firmware RAM", firmware_ram, args.ram_capacity),
         ("Peak image RAM", max(bootloader_ram, firmware_ram), args.ram_capacity),
     )
-    print_table("LaunchCore device flash usage", flash_rows)
     print_table("LaunchCore device RAM usage (images execute independently)", ram_rows)
+    print_table("LaunchCore device flash usage", flash_rows)
     return 0
 
 

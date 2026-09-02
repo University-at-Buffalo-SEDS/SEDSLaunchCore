@@ -126,6 +126,10 @@ launchcore_generate_linker_scripts(BSP_CONFIG \"${{CMAKE_SOURCE_DIR}}/board_conf
             self.assertIn("106,456 B (103.96 KiB)", report)
             self.assertIn("Peak image RAM", report)
             self.assertIn("images execute independently", report)
+            self.assertLess(
+                report.index("LaunchCore device RAM usage"),
+                report.index("LaunchCore device flash usage"),
+            )
 
     def test_ram_usage_is_initialized_data_plus_bss(self):
         completed = subprocess.CompletedProcess(
