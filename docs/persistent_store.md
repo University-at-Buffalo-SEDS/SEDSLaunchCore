@@ -3,7 +3,10 @@
 LaunchCore provides a bootloader-managed flash journal for settings that must
 survive application and bootloader updates. Board layouts reserve
 `persistent_data_base`, `persistent_data_size`, and
-`persistent_data_erase_size`; this range must not overlap any application,
+`persistent_data_erase_size`. Set `persistent_data_write_size` to the flash
+programming unit required for write addresses (for example, 8 bytes on STM32G4
+and 16 bytes on STM32H5); zero retains the legacy 4-byte default. This range
+must not overlap any application,
 staging, metadata, or bootloader erase range.
 
 ```c

@@ -10,6 +10,8 @@
 #define PERSIST_VERSION 1u
 #define PERSIST_COMMITTED 0x434F4D4Du
 #define PERSIST_FLAG_DELETED 1u
+#define PERSIST_LEGACY_WRITE_SIZE 4u
+#define PERSIST_MAX_WRITE_SIZE 32u
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -43,9 +45,17 @@ typedef enum {
     RECORD_READ_CORRUPT,
 } record_read_status_t;
 
-static uint32_t align4(uint32_t value)
+static uint32_t write_size(void)
 {
-    return (value + 3u) & ~3u;
+    const launchcore_storage_layout_t *layout = launchcore_storage_driver()->layout();
+    return layout == NULL || layout->persistent_data_write_size == 0u ?
+        PERSIST_LEGACY_WRITE_SIZE : layout->persistent_data_write_size;
+}
+
+static uint32_t align_write(uint32_t value)
+{
+    const uint32_t alignment = write_size();
+    return (value + alignment - 1u) & ~(alignment - 1u);
 }
 
 static bool bank_header_valid(const persist_bank_header_t *header)
@@ -85,8 +95,14 @@ static record_read_status_t read_record(uint32_t address, uint32_t available, pe
 static launchcore_persist_status_t layout_banks(persist_bank_t banks[2])
 {
     const launchcore_storage_layout_t *layout = launchcore_storage_driver()->layout();
+    const uint32_t alignment = write_size();
     if (layout == NULL || layout->persistent_data_size < 2u * (sizeof(persist_bank_header_t) + sizeof(persist_record_header_t))) {
         return LAUNCHCORE_PERSIST_NO_SPACE;
+    }
+    if (alignment < PERSIST_LEGACY_WRITE_SIZE || alignment > PERSIST_MAX_WRITE_SIZE ||
+        (alignment & (alignment - 1u)) != 0u ||
+        layout->persistent_data_base % alignment != 0u) {
+        return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
     }
     uint32_t bank_size = layout->persistent_data_size / 2u;
     if (layout->persistent_data_erase_size != 0u &&
@@ -161,7 +177,7 @@ static launchcore_persist_status_t active_bank(persist_bank_t banks[2], unsigned
 
 static uint32_t scan_end(const persist_bank_t *bank, uint32_t *max_sequence)
 {
-    uint32_t offset = align4(sizeof(persist_bank_header_t));
+    uint32_t offset = align_write(sizeof(persist_bank_header_t));
     uint8_t value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
     *max_sequence = 0u;
     while (offset + sizeof(persist_record_header_t) <= bank->size) {
@@ -170,7 +186,7 @@ static uint32_t scan_end(const persist_bank_t *bank, uint32_t *max_sequence)
         if (status == RECORD_READ_END) break;
         if (status == RECORD_READ_CORRUPT) return bank->size;
         if (status == RECORD_READ_VALID && header.sequence > *max_sequence) *max_sequence = header.sequence;
-        offset += align4(sizeof(header) + header.value_size);
+        offset += align_write(sizeof(header) + header.value_size);
     }
     return offset;
 }
@@ -178,7 +194,7 @@ static uint32_t scan_end(const persist_bank_t *bank, uint32_t *max_sequence)
 static launchcore_persist_status_t append_record(const persist_bank_t *bank, uint32_t offset,
     uint32_t key, const void *value, uint16_t value_size, uint16_t flags, uint32_t sequence)
 {
-    uint32_t record_size = align4(sizeof(persist_record_header_t) + value_size);
+    uint32_t record_size = align_write(sizeof(persist_record_header_t) + value_size);
     if (record_size > bank->size - offset) return LAUNCHCORE_PERSIST_NO_SPACE;
     persist_record_header_t header = {
         .magic = PERSIST_RECORD_MAGIC,
@@ -189,9 +205,13 @@ static launchcore_persist_status_t append_record(const persist_bank_t *bank, uin
         .value_crc32 = launchcore_crc32(value, value_size),
     };
     header.header_crc32 = launchcore_crc32(&header, offsetof(persist_record_header_t, header_crc32));
-    const launchcore_storage_driver_t *storage = launchcore_storage_driver();
-    if (storage->write(bank->base + offset, &header, sizeof(header)) != LAUNCHCORE_STORAGE_OK ||
-        (value_size > 0u && storage->write(bank->base + offset + sizeof(header), value, value_size) != LAUNCHCORE_STORAGE_OK)) {
+    uint8_t record[sizeof(persist_record_header_t) + LAUNCHCORE_PERSIST_MAX_VALUE_SIZE +
+        PERSIST_MAX_WRITE_SIZE - 1u];
+    memset(record, 0xFF, record_size);
+    memcpy(record, &header, sizeof(header));
+    if (value_size > 0u) memcpy(record + sizeof(header), value, value_size);
+    if (launchcore_storage_driver()->write(bank->base + offset, record, record_size) !=
+        LAUNCHCORE_STORAGE_OK) {
         return LAUNCHCORE_PERSIST_STORAGE_ERROR;
     }
     return LAUNCHCORE_PERSIST_OK;
@@ -205,7 +225,7 @@ static bool has_later_key(const persist_bank_t *bank, uint32_t offset, uint32_t 
         record_read_status_t status = read_record(bank->base + offset, bank->size - offset, &header, value);
         if (status == RECORD_READ_END || status == RECORD_READ_CORRUPT) return false;
         if (status == RECORD_READ_VALID && header.key == key) return true;
-        offset += align4(sizeof(header) + header.value_size);
+        offset += align_write(sizeof(header) + header.value_size);
     }
     return false;
 }
@@ -217,8 +237,8 @@ static launchcore_persist_status_t compact(persist_bank_t banks[2], unsigned int
     launchcore_persist_status_t status = prepare_bank(target, source->generation + 1u);
     if (status != LAUNCHCORE_PERSIST_OK) return status;
 
-    uint32_t source_offset = align4(sizeof(persist_bank_header_t));
-    uint32_t target_offset = align4(sizeof(persist_bank_header_t));
+    uint32_t source_offset = align_write(sizeof(persist_bank_header_t));
+    uint32_t target_offset = align_write(sizeof(persist_bank_header_t));
     uint8_t value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
     while (source_offset + sizeof(persist_record_header_t) <= source->size) {
         persist_record_header_t header;
@@ -226,12 +246,12 @@ static launchcore_persist_status_t compact(persist_bank_t banks[2], unsigned int
             source->size - source_offset, &header, value);
         if (read_status == RECORD_READ_END) break;
         if (read_status == RECORD_READ_CORRUPT) return LAUNCHCORE_PERSIST_CORRUPT;
-        uint32_t next = source_offset + align4(sizeof(header) + header.value_size);
+        uint32_t next = source_offset + align_write(sizeof(header) + header.value_size);
         if (read_status == RECORD_READ_VALID && !has_later_key(source, next, header.key) &&
             (header.flags & PERSIST_FLAG_DELETED) == 0u) {
             status = append_record(target, target_offset, header.key, value, header.value_size, 0u, header.sequence);
             if (status != LAUNCHCORE_PERSIST_OK) return status;
-            target_offset += align4(sizeof(header) + header.value_size);
+            target_offset += align_write(sizeof(header) + header.value_size);
         }
         source_offset = next;
     }
@@ -258,7 +278,7 @@ launchcore_persist_status_t launchcore_persist_get(uint32_t key, void *value, si
     bool found = false;
     uint8_t latest_value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
     uint8_t candidate[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
-    uint32_t offset = align4(sizeof(persist_bank_header_t));
+    uint32_t offset = align_write(sizeof(persist_bank_header_t));
     while (offset + sizeof(persist_record_header_t) <= banks[active].size) {
         persist_record_header_t header;
         record_read_status_t read_status = read_record(banks[active].base + offset,
@@ -270,7 +290,7 @@ launchcore_persist_status_t launchcore_persist_get(uint32_t key, void *value, si
             memcpy(latest_value, candidate, header.value_size);
             found = true;
         }
-        offset += align4(sizeof(header) + header.value_size);
+        offset += align_write(sizeof(header) + header.value_size);
     }
     if (!found || (latest.flags & PERSIST_FLAG_DELETED) != 0u) return LAUNCHCORE_PERSIST_NOT_FOUND;
     if (*value_size < latest.value_size) {
@@ -293,7 +313,7 @@ static launchcore_persist_status_t write_value(uint32_t key, const void *value, 
     if (status != LAUNCHCORE_PERSIST_OK) return status;
     uint32_t max_sequence;
     uint32_t offset = scan_end(&banks[active], &max_sequence);
-    uint32_t required = align4(sizeof(persist_record_header_t) + (uint32_t)value_size);
+    uint32_t required = align_write(sizeof(persist_record_header_t) + (uint32_t)value_size);
     if (required > banks[active].size - offset) {
         status = compact(banks, active);
         if (status != LAUNCHCORE_PERSIST_OK) return status;

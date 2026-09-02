@@ -32,6 +32,7 @@ typedef struct {
     uint32_t persistent_data_base;
     uint32_t persistent_data_size;
     uint32_t persistent_data_erase_size;
+    uint32_t persistent_data_write_size;
     uint32_t slot_erase_size;
     bool slot_b_is_delta;
     bool supports_xip;

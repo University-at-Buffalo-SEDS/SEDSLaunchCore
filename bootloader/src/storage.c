@@ -22,6 +22,7 @@ static const launchcore_storage_layout_t mock_layout = {
     .persistent_data_base = 0x00E00000u,
     .persistent_data_size = 0x00020000u,
     .persistent_data_erase_size = 0x00001000u,
+    .persistent_data_write_size = 16u,
     .supports_xip = true,
 };
 
@@ -50,6 +51,11 @@ static launchcore_storage_status_t mock_erase(uint32_t addr, uint32_t len)
 static launchcore_storage_status_t mock_write(uint32_t addr, const void *data, uint32_t len)
 {
     if (data == NULL || !range_ok(addr, len)) return LAUNCHCORE_STORAGE_ERR_RANGE;
+    if (addr >= mock_layout.persistent_data_base &&
+        addr < mock_layout.persistent_data_base + mock_layout.persistent_data_size &&
+        addr % mock_layout.persistent_data_write_size != 0u) {
+        return LAUNCHCORE_STORAGE_ERR_RANGE;
+    }
     memcpy(&mock_storage[addr], data, len);
     return LAUNCHCORE_STORAGE_OK;
 }

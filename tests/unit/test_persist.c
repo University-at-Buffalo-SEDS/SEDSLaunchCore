@@ -16,6 +16,17 @@ int main(void)
     assert(result_size == sizeof(result));
     assert(result == value);
 
+    uint8_t boolean_setting = 1u;
+    assert(launchcore_persist_set(0x55474C57u, &boolean_setting,
+        sizeof(boolean_setting)) == LAUNCHCORE_PERSIST_OK);
+    assert(launchcore_persist_init() == LAUNCHCORE_PERSIST_OK);
+    boolean_setting = 0u;
+    result_size = sizeof(boolean_setting);
+    assert(launchcore_persist_get(0x55474C57u, &boolean_setting, &result_size) ==
+        LAUNCHCORE_PERSIST_OK);
+    assert(result_size == sizeof(boolean_setting));
+    assert(boolean_setting == 1u);
+
     value = 0xABCDEF01u;
     assert(launchcore_persist_set(10u, &value, sizeof(value)) == LAUNCHCORE_PERSIST_OK);
     result_size = sizeof(result);
