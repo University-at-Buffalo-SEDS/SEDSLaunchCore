@@ -26,6 +26,7 @@ Template inventory:
 - `templates/stm32g4_external_basic`
 - `templates/stm32h5_internal_basic`
 - `templates/stm32h5_external_basic`
+- `templates/stm32h5_single_slot_external_stage`
 - `templates/stm32h7_internal_basic`
 - `templates/stm32h7_external_basic`
 - `templates/stm32u7_internal_basic`

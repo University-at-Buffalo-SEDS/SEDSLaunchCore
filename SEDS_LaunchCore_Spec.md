@@ -9,7 +9,8 @@ internal flash, initializes the board resources needed to access firmware
 storage, validates a LaunchCore image, selects a confirmed or pending firmware
 slot, and jumps to the application.
 
-The repository supports internal-flash and external-flash slot layouts, an
+The repository supports internal-flash and external-flash layouts, A/B and
+single-slot application installation, reversible-delta updates, an
 application-side update library, redundant metadata, rollback after failed
 pending boots, a minimal recovery command parser, and staged bootloader update
 metadata with board-controlled signature and flash hooks.
@@ -17,8 +18,8 @@ metadata with board-controlled signature and flash hooks.
 ## 1. Goals
 
 - Keep the internal-flash bootloader deterministic, portable, and small.
-- Support A/B application slots in internal flash or external memory-mapped
-  flash.
+- Support A/B, single-slot staged, and reversible-delta application updates in
+  internal flash or external memory-mapped flash.
 - Keep slot selection, metadata format, image validation, and rollback policy
   owned by LaunchCore.
 - Let the application own download transport while using the LaunchCore update
@@ -33,7 +34,6 @@ metadata with board-controlled signature and flash hooks.
 - Networking in the bootloader.
 - A filesystem in the bootloader.
 - User interface code in the bootloader.
-- Delta update support.
 - Production key management.
 - A universal STM32 flash driver. BSP templates contain placeholders and must
   be completed for each board.
@@ -65,6 +65,7 @@ Built-in BSP templates:
 - `stm32g4_external_basic`
 - `stm32h5_internal_basic`
 - `stm32h5_external_basic`
+- `stm32h5_single_slot_external_stage`
 - `stm32h7_internal_basic`
 - `stm32h7_external_basic`
 - `stm32u7_internal_basic`
@@ -92,9 +93,10 @@ Reset
   -> validate payload CRC and SHA-256
   -> enable memory-mapped storage when required
   -> validate application vector through the BSP
+  -> disable SysTick and NVIC interrupts
   -> deinitialize bootloader-owned hardware
-  -> set VTOR and MSP
-  -> jump to application reset handler
+  -> set VTOR
+  -> switch MSP, restore enabled interrupts, and branch to the reset handler
 ```
 
 Pending image policy:
@@ -180,6 +182,12 @@ Current metadata flags:
 LAUNCHCORE_METADATA_FLAG_RECOVERY_REQUESTED
 LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_PENDING
 LAUNCHCORE_METADATA_FLAG_BOOTLOADER_UPDATE_CONTINUE_APP
+LAUNCHCORE_METADATA_FLAG_APP_INSTALL_PENDING
+LAUNCHCORE_METADATA_FLAG_DELTA_UPDATE_PENDING
+LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_AVAILABLE
+LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_PENDING
+LAUNCHCORE_METADATA_FLAG_DELTA_APPLY_STARTED
+LAUNCHCORE_METADATA_FLAG_DELTA_ROLLBACK_STARTED
 ```
 
 Current slot IDs:
@@ -222,6 +230,16 @@ typedef struct __attribute__((packed)) {
     uint8_t slot_a_hash[32];
     uint8_t slot_b_hash[32];
     uint32_t flags;
+    uint8_t update_kind;
+    uint8_t update_attempted;
+    uint8_t update_result;
+    uint8_t update_reason;
+    uint32_t staged_app_size;
+    uint32_t staged_app_version;
+    uint8_t staged_app_hash[32];
+    uint32_t staged_app_addr;
+    uint32_t staged_bundle_base;
+    uint32_t staged_bundle_size;
     uint32_t metadata_crc32;
 } launchcore_metadata_t;
 ```
@@ -252,8 +270,8 @@ typedef struct {
 ```
 
 The storage layout includes application slots, metadata copies, bootloader
-region, bootloader staging region, optional application staging region, and an
-XIP capability flag.
+region, bootloader staging region, optional application staging and persistent
+data regions, erase/write geometry, delta policy, and an XIP capability flag.
 
 ```c
 typedef struct {
@@ -273,6 +291,7 @@ typedef struct {
     uint32_t persistent_data_base;
     uint32_t persistent_data_size;
     uint32_t persistent_data_erase_size;
+    uint32_t persistent_data_write_size;
     uint32_t slot_erase_size;
     bool slot_b_is_delta;
     bool supports_xip;
@@ -281,6 +300,10 @@ typedef struct {
 
 The persistent region contains two equal erase-aligned journal banks and must
 not overlap any region erased during application or bootloader installation.
+`persistent_data_write_size` specifies the flash programming unit used to align
+journal record placement and record-write lengths. It must be a power of two
+from 4 through 32 bytes, and `persistent_data_base` must use the same alignment.
+Zero selects the legacy 4-byte default.
 `slot_b_size == 0` selects single-slot installation through `app_staging`.
 `slot_b_is_delta` instead selects a two-region policy where Slot A contains the
 complete executable application and Slot B contains a compressed reversible
@@ -293,10 +316,13 @@ Every board port or BSP template provides:
 ```text
 board_config.h
 platform.c
-linker_bootloader.ld
 storage_internal_flash.c or storage_external_flash.c/storage_qspi.c
 external_ram.c when needed
 ```
+
+GNU ld ports can generate bootloader and application linker scripts from
+`board_config.h` with `launchcore_generate_linker_scripts()`. Checked-in linker
+scripts remain supported for custom section layouts or other linker families.
 
 Current platform hooks:
 
@@ -349,6 +375,15 @@ launchcore_status_t launchcore_update_finish(void);
 launchcore_status_t launchcore_update_abort(void);
 launchcore_status_t launchcore_confirm_boot(void);
 launchcore_status_t launchcore_request_recovery(void);
+launchcore_status_t launchcore_get_update_report(launchcore_update_report_t *report);
+launchcore_status_t launchcore_bundle_update_begin(uint32_t bundle_size);
+launchcore_status_t launchcore_bundle_update_write(const void *data, size_t len);
+launchcore_status_t launchcore_bundle_update_finish(void);
+launchcore_status_t launchcore_bundle_update_abort(void);
+launchcore_status_t launchcore_delta_update_begin(uint32_t patch_size);
+launchcore_status_t launchcore_delta_update_write(const void *data, size_t len);
+launchcore_status_t launchcore_delta_update_finish(void);
+launchcore_status_t launchcore_delta_update_abort(void);
 ```
 
 Behavior:

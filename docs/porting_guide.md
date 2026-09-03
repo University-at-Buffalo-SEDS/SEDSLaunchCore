@@ -9,10 +9,13 @@ other linker families.
 Keep flash erase and write rules inside the storage driver and validate
 stack/reset ranges before jumping to an application.
 
-Set the persistent-data base, size, and erase size in the storage layout. It
-must contain two equal erase-aligned banks. Linker scripts must name and exclude
-this region from application and bootloader sections. Verify the compiled map
-with `python3 build.py memory-map --board <name>`.
+Set the persistent-data base, size, erase size, and write size in the storage
+layout. `persistent_data_write_size` must match the flash programming unit and
+be a power of two from 4 through 32 bytes; align `persistent_data_base` to both
+the erase and write sizes. The region must contain two equal erase-aligned
+banks. Linker scripts must name and exclude it from application and bootloader
+sections. Verify the compiled map with
+`python3 build.py memory-map --board <name>`.
 
 For one full-size application, set `slot_b_size` to zero, make Slot A span the
 available application region, and provide separate `app_staging`. If staging is
@@ -62,11 +65,12 @@ bootloader size, and `${LAYOUT_PREFIX}_SLOT_A_BASE`, `_SLOT_A_SIZE`, and
 `BOOTLOADER_RAM`, `FIRMWARE_FLASH`, and `FIRMWARE_RAM`, so GNU ld's
 `--print-memory-usage` output identifies each image.
 
-`launchcore_add_memory_report()` adds a post-link report with separately labeled
-Bootloader, Firmware, and Total flash rows plus Bootloader, Firmware, and Peak
-image RAM rows. Values retain exact bytes and also include readable KiB/MiB
-units. Binary sizes are used for flash so the combined figure matches what is
-emitted for installation; ELF initialized-data and BSS sizes are used for RAM.
+`launchcore_add_memory_report()` adds a post-link report with Bootloader,
+Firmware, and Peak image RAM rows followed by separately labeled Bootloader,
+Firmware, and Total flash rows. Values retain exact bytes and also include
+readable KiB/MiB units. Binary sizes are used for flash so the combined figure
+matches what is emitted for installation; ELF initialized-data and BSS sizes
+are used for RAM.
 Bootloader and firmware RAM are not added because the images execute at
 different times and reuse the same SRAM. The BSP-generated SRAM capacity is
 used automatically; ports that provide custom linker scripts must pass
