@@ -19,7 +19,7 @@ def make_app(tmp_path: pathlib.Path, slot_base: str = "0x08010000") -> pathlib.P
         "--slot-base",
         slot_base,
         "--vector-table",
-        hex(int(slot_base, 0) + 0x100),
+        hex(int(slot_base, 0) + 0x200),
         "--version",
         "1.0.0",
         "--xip",

@@ -1,5 +1,9 @@
 # SEDS LaunchCore
 
+Current stable release: **v1.0.0**. CMake consumers should fetch the
+`v1.0.0` tag rather than a development commit. Public interfaces and image
+format changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+
 SEDS LaunchCore is a small STM32 bootloader framework. The bootloader runs from
 internal flash, validates A/B firmware slots in internal or external storage,
 then jumps to a confirmed or pending application image.
@@ -37,7 +41,7 @@ python3 build.py all
 ```
 
 To run the tests directly, including configuring and building `build/host` when
-it does not exist yet:
+it does not exist yet or was created before the repository was moved:
 
 ```sh
 python3 build.py test

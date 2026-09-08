@@ -31,6 +31,17 @@ def default_build_dir(name: str) -> Path:
     return ROOT / "build" / name
 
 
+def cache_matches_source(build_dir: Path) -> bool:
+    cache = build_dir / "CMakeCache.txt"
+    if not cache.is_file():
+        return False
+    prefix = "CMAKE_HOME_DIRECTORY:INTERNAL="
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix):
+            return Path(line.removeprefix(prefix)).resolve() == ROOT
+    return False
+
+
 def configure(args: argparse.Namespace, build_dir: Path) -> None:
     if args.clean and build_dir.exists():
         shutil.rmtree(build_dir)
@@ -65,9 +76,15 @@ def command_build(args: argparse.Namespace) -> None:
 
 def command_test(args: argparse.Namespace) -> None:
     build_dir = Path(args.build_dir) if args.build_dir else default_build_dir(args.name)
-    if args.configure or not (build_dir / "CMakeCache.txt").is_file():
+    if build_dir.exists() and not cache_matches_source(build_dir):
+        print(f"Removing stale CMake build directory: {build_dir}")
+        if not args.dry_run:
+            shutil.rmtree(build_dir)
+    if args.configure or not cache_matches_source(build_dir):
         configure(args, build_dir)
-        build_config(args, build_dir)
+    # Tests may have been added or their executables removed since the last
+    # configure. Always bring the requested test tree up to date before CTest.
+    build_config(args, build_dir)
 
     cmd = ["ctest", "--test-dir", str(build_dir)]
     if args.output_on_failure:
