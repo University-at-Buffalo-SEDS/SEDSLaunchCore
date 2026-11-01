@@ -332,3 +332,197 @@ launchcore_persist_status_t launchcore_persist_delete(uint32_t key)
 {
     return write_value(key, NULL, 0u, PERSIST_FLAG_DELETED);
 }
+
+/* Strict opt-in reader. Keep legacy recovery/format behavior above unchanged. */
+static launchcore_persist_status_t strict_fault(launchcore_persist_strict_info_t *info,
+    launchcore_persist_health_t health)
+{
+    info->health = health;
+    return health == LAUNCHCORE_PERSIST_HEALTH_UNKNOWN ?
+        LAUNCHCORE_PERSIST_STORAGE_ERROR : LAUNCHCORE_PERSIST_CORRUPT;
+}
+
+static launchcore_persist_status_t strict_erased(uint32_t address, uint32_t size, bool *erased)
+{
+    uint8_t bytes[PERSIST_MAX_WRITE_SIZE];
+    *erased = true;
+    while (size != 0u) {
+        const uint32_t take = size < sizeof(bytes) ? size : sizeof(bytes);
+        if (launchcore_storage_driver()->read(address, bytes, take) != LAUNCHCORE_STORAGE_OK)
+            return LAUNCHCORE_PERSIST_STORAGE_ERROR;
+        for (uint32_t i = 0u; i < take; ++i) {
+            if (bytes[i] != 0xFFu) *erased = false;
+        }
+        address += take;
+        size -= take;
+    }
+    return LAUNCHCORE_PERSIST_OK;
+}
+
+static launchcore_persist_status_t strict_scan(const persist_bank_t *bank,
+    launchcore_persist_strict_info_t *info, const uint32_t *key,
+    persist_record_header_t *latest, uint8_t *latest_value, uint32_t *max_sequence)
+{
+    const launchcore_storage_driver_t *storage = launchcore_storage_driver();
+    uint32_t offset = align_write(sizeof(persist_bank_header_t));
+    uint8_t value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
+    *max_sequence = 0u;
+    while (offset < bank->size) {
+        persist_record_header_t header;
+        const uint32_t available = bank->size - offset;
+        uint32_t magic;
+        if (available < sizeof(header)) {
+            bool erased;
+            if (strict_erased(bank->base + offset, available, &erased) != LAUNCHCORE_PERSIST_OK)
+                return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+            return erased ? LAUNCHCORE_PERSIST_OK :
+                strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        }
+        if (storage->read(bank->base + offset, &magic, sizeof(magic)) != LAUNCHCORE_STORAGE_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (magic == UINT32_MAX) {
+            bool erased;
+            if (strict_erased(bank->base + offset, available, &erased) != LAUNCHCORE_PERSIST_OK)
+                return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+            return erased ? LAUNCHCORE_PERSIST_OK :
+                strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        }
+        if (storage->read(bank->base + offset, &header, sizeof(header)) != LAUNCHCORE_STORAGE_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (!record_header_valid(&header, available))
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        const uint32_t span = align_write(sizeof(header) + header.value_size);
+        if (span > available)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        if (header.value_size != 0u &&
+            storage->read(bank->base + offset + sizeof(header), value, header.value_size) != LAUNCHCORE_STORAGE_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (launchcore_crc32(value, header.value_size) != header.value_crc32)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        if (header.sequence == 0u || header.sequence == UINT32_MAX || header.sequence <= *max_sequence)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_AMBIGUOUS);
+        *max_sequence = header.sequence;
+        bool erased;
+        if (strict_erased(bank->base + offset + sizeof(header) + header.value_size,
+                span - sizeof(header) - header.value_size, &erased) != LAUNCHCORE_PERSIST_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (!erased) return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        if (key != NULL && header.key == *key) {
+            *latest = header;
+            if (latest_value != NULL && header.value_size != 0u)
+                memcpy(latest_value, value, header.value_size);
+            info->record = (header.flags & PERSIST_FLAG_DELETED) != 0u ?
+                LAUNCHCORE_PERSIST_RECORD_DELETED : LAUNCHCORE_PERSIST_RECORD_PRESENT;
+        }
+        offset += span;
+    }
+    return LAUNCHCORE_PERSIST_OK;
+}
+
+static launchcore_persist_status_t strict_select(persist_bank_t banks[2], unsigned *active,
+    launchcore_persist_strict_info_t *info)
+{
+    const launchcore_storage_driver_t *storage = launchcore_storage_driver();
+    if (storage == NULL || storage->layout == NULL || storage->read == NULL)
+        return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    launchcore_persist_status_t status = layout_banks(banks);
+    if (status != LAUNCHCORE_PERSIST_OK) return status;
+    const launchcore_storage_layout_t *layout = storage->layout();
+    /* Legacy layout_banks intentionally retains its historical permissive
+     * geometry. Strict inspection must cover every byte in two aligned banks. */
+    if ((layout->persistent_data_size & 1u) != 0u ||
+        (banks[0].size & (write_size() - 1u)) != 0u ||
+        layout->persistent_data_base > UINT32_MAX - (layout->persistent_data_size - 1u))
+        return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    bool blank[2];
+    uint32_t sequences[2] = {0u, 0u};
+    for (unsigned i = 0u; i < 2u; ++i) {
+        if (strict_erased(banks[i].base, banks[i].size, &blank[i]) != LAUNCHCORE_PERSIST_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (blank[i]) continue;
+        persist_bank_header_t header;
+        if (storage->read(banks[i].base, &header, sizeof(header)) != LAUNCHCORE_STORAGE_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (!bank_header_valid(&header))
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        if (header.generation == 0u || header.generation == UINT32_MAX)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_AMBIGUOUS);
+        banks[i].generation = header.generation;
+        bool erased;
+        if (strict_erased(banks[i].base + sizeof(header),
+                align_write(sizeof(header)) - sizeof(header), &erased) != LAUNCHCORE_PERSIST_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (!erased) return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_CORRUPT);
+        status = strict_scan(&banks[i], info, NULL, NULL, NULL, &sequences[i]);
+        if (status != LAUNCHCORE_PERSIST_OK) return status;
+    }
+    if (blank[0] && blank[1]) {
+        info->health = LAUNCHCORE_PERSIST_HEALTH_VIRGIN;
+        return LAUNCHCORE_PERSIST_OK;
+    }
+    if (!blank[0] && !blank[1]) {
+        const uint32_t a = banks[0].generation, b = banks[1].generation;
+        if (a == b || (a > b ? a - b : b - a) != 1u)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_AMBIGUOUS);
+    }
+    *active = blank[0] || (!blank[1] && banks[1].generation > banks[0].generation) ? 1u : 0u;
+    info->health = LAUNCHCORE_PERSIST_HEALTH_HEALTHY;
+    info->bank_generation = banks[*active].generation;
+    info->max_sequence = sequences[*active];
+    return LAUNCHCORE_PERSIST_OK;
+}
+
+launchcore_persist_status_t launchcore_persist_probe_strict(launchcore_persist_strict_info_t *info)
+{
+    if (info == NULL) return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    *info = (launchcore_persist_strict_info_t){0};
+    persist_bank_t banks[2];
+    unsigned active = 0u;
+    return strict_select(banks, &active, info);
+}
+
+launchcore_persist_status_t launchcore_persist_get_strict(uint32_t key,
+    void *value, size_t *value_size, launchcore_persist_strict_info_t *info)
+{
+    if (info == NULL) return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    *info = (launchcore_persist_strict_info_t){0};
+    if (value_size == NULL || (value == NULL && *value_size != 0u))
+        return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    persist_bank_t banks[2];
+    unsigned active = 0u;
+    launchcore_persist_status_t status = strict_select(banks, &active, info);
+    if (status != LAUNCHCORE_PERSIST_OK) return status;
+    info->record = LAUNCHCORE_PERSIST_RECORD_ABSENT;
+    if (info->health == LAUNCHCORE_PERSIST_HEALTH_VIRGIN) return LAUNCHCORE_PERSIST_NOT_FOUND;
+    persist_record_header_t latest = {0};
+    uint8_t latest_value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
+    uint32_t sequence;
+    status = strict_scan(&banks[active], info, &key, &latest, latest_value, &sequence);
+    if (status != LAUNCHCORE_PERSIST_OK) return status;
+    /* A committed successor must not silently erase a still-live predecessor
+     * key or replace the same sequence with different data. This checks only
+     * observable adjacent-bank history, not arbitrary whole-image rollback. */
+    if (banks[active ^ 1u].generation != 0u) {
+        launchcore_persist_strict_info_t older_info = *info;
+        older_info.record = LAUNCHCORE_PERSIST_RECORD_ABSENT;
+        persist_record_header_t older = {0};
+        status = strict_scan(&banks[active ^ 1u], &older_info, &key, &older, NULL, &sequence);
+        if (status != LAUNCHCORE_PERSIST_OK) {
+            info->health = older_info.health;
+            return status;
+        }
+        const bool absent = info->record == LAUNCHCORE_PERSIST_RECORD_ABSENT;
+        if ((absent && older_info.record == LAUNCHCORE_PERSIST_RECORD_PRESENT) ||
+            (!absent && older_info.record != LAUNCHCORE_PERSIST_RECORD_ABSENT &&
+             (latest.sequence < older.sequence ||
+              (latest.sequence == older.sequence &&
+               (latest.flags != older.flags || latest.value_size != older.value_size ||
+                latest.value_crc32 != older.value_crc32)))))
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_AMBIGUOUS);
+    }
+    if (info->record != LAUNCHCORE_PERSIST_RECORD_PRESENT) return LAUNCHCORE_PERSIST_NOT_FOUND;
+    if (*value_size < latest.value_size) return LAUNCHCORE_PERSIST_NO_SPACE;
+    if (latest.value_size != 0u) memcpy(value, latest_value, latest.value_size);
+    *value_size = latest.value_size;
+    return LAUNCHCORE_PERSIST_OK;
+}

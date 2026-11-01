@@ -129,6 +129,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_persist PRIVATE launchcore_core)
   add_test(NAME persist COMMAND test_persist)
 
+  add_executable(test_persist_strict tests/unit/test_persist_strict.c)
+  target_link_libraries(test_persist_strict PRIVATE launchcore_core)
+  add_test(NAME persist_strict COMMAND test_persist_strict)
+
   add_executable(test_recovery tests/unit/test_recovery.c)
   target_link_libraries(test_recovery PRIVATE launchcore_core)
   add_test(NAME recovery COMMAND test_recovery)
@@ -140,4 +144,23 @@ if(BUILD_TESTING)
   add_executable(test_delta_update tests/unit/test_delta_update.c)
   target_link_libraries(test_delta_update PRIVATE launchcore_update_lib)
   add_test(NAME delta_update COMMAND test_delta_update)
+
+  # Unit assertions contain executable test operations. Release's NDEBUG must
+  # never turn those checks/calls into a successful no-op. Keep production
+  # libraries and example/firmware targets on their original profile flags.
+  set(_launchcore_assertion_tests
+      test_image_header test_metadata test_slot_select test_streamed_update
+      test_streamed_bootloader_update test_persist test_persist_strict
+      test_recovery test_single_slot_install test_delta_update)
+  foreach(_launchcore_test IN LISTS _launchcore_assertion_tests)
+    if(MSVC)
+      target_compile_options(${_launchcore_test} PRIVATE /UNDEBUG)
+    elseif(CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+      target_compile_options(${_launchcore_test} PRIVATE -UNDEBUG)
+    else()
+      message(FATAL_ERROR
+          "Unit tests require an assertion-enabled compiler configuration: "
+          "add the compiler's test-target-only NDEBUG undefine option")
+    endif()
+  endforeach()
 endif()
