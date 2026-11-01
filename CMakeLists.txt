@@ -133,6 +133,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_persist_strict PRIVATE launchcore_core)
   add_test(NAME persist_strict COMMAND test_persist_strict)
 
+  add_executable(test_persist_strict_write tests/unit/test_persist_strict_write.c)
+  target_link_libraries(test_persist_strict_write PRIVATE launchcore_core)
+  add_test(NAME persist_strict_write COMMAND test_persist_strict_write)
+
   add_executable(test_recovery tests/unit/test_recovery.c)
   target_link_libraries(test_recovery PRIVATE launchcore_core)
   add_test(NAME recovery COMMAND test_recovery)
@@ -150,7 +154,7 @@ if(BUILD_TESTING)
   # libraries and example/firmware targets on their original profile flags.
   set(_launchcore_assertion_tests
       test_image_header test_metadata test_slot_select test_streamed_update
-      test_streamed_bootloader_update test_persist test_persist_strict
+      test_streamed_bootloader_update test_persist test_persist_strict test_persist_strict_write
       test_recovery test_single_slot_install test_delta_update)
   foreach(_launchcore_test IN LISTS _launchcore_assertion_tests)
     if(MSVC)

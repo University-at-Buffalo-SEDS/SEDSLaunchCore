@@ -60,3 +60,23 @@ launchcore_persist_status_t launchcore_persist_get_strict(uint32_t key,
 /* HEALTHY means structural journal integrity, not authorized provisioning.
  * get additionally checks the requested key against an adjacent predecessor.
  * Sequence/value semantics remain application-owned, not authentication. */
+
+/* Opt-in verified writes. Caller must initialize STORAGE ONLY, then hold an
+ * exclusive checked storage-owner lock through selection, write and readback.
+ * Source value must remain immutable and must not alias info. No operation
+ * initializes storage or invokes legacy formatting/repair. Existing healthy
+ * journal only: virgin set/delete return NOT_FOUND. Corrupt, ambiguous or IO
+ * health fails closed. Errors may have durably written part/all of an intent;
+ * they never promise rollback. GC preserves the old active bank; an interrupted
+ * target can intentionally make subsequent strict health CORRUPT. No automatic
+ * recovery/reformat. Latest tombstones and unrelated keys are preserved.
+ * Provisioning is a DISTINCT explicit operator-authorized virgin-only operation;
+ * this API cannot establish that authorization. Missing/deleted keys do not
+ * authorize provisioning or enabling legacy control. Arbitrary whole-flash
+ * rollback remains undetectable. info may change on every return. */
+launchcore_persist_status_t launchcore_persist_set_strict(uint32_t key,
+    const void *value, size_t value_size, launchcore_persist_strict_info_t *info);
+launchcore_persist_status_t launchcore_persist_delete_strict(uint32_t key,
+    launchcore_persist_strict_info_t *info);
+launchcore_persist_status_t launchcore_persist_provision_virgin_strict(uint32_t key,
+    const void *value, size_t value_size, launchcore_persist_strict_info_t *info);
