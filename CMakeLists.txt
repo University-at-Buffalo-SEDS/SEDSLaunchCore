@@ -137,6 +137,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_persist_strict_write PRIVATE launchcore_core)
   add_test(NAME persist_strict_write COMMAND test_persist_strict_write)
 
+  add_executable(test_persist_strict_repair tests/unit/test_persist_strict_repair.c)
+  target_link_libraries(test_persist_strict_repair PRIVATE launchcore_core)
+  add_test(NAME persist_strict_repair COMMAND test_persist_strict_repair)
+
   add_executable(test_recovery tests/unit/test_recovery.c)
   target_link_libraries(test_recovery PRIVATE launchcore_core)
   add_test(NAME recovery COMMAND test_recovery)

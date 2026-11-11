@@ -760,3 +760,143 @@ launchcore_persist_status_t launchcore_persist_provision_virgin_strict(uint32_t 
 {
     return strict_write_result(strict_write_value(key, value, size, 0u, true, info), info);
 }
+
+/* Boot-time repair of interrupted writes only. The newest committed bank is
+ * the only bank a reader ever trusted, and no erase targets it: compaction and
+ * provisioning erase only the other bank, and every commit is the last write
+ * of its operation. So a bank that is not committed, or an older committed
+ * bank beside a clean newer one, never held authoritative data; and a torn
+ * final record (all later bytes erased within one maximal record) was never
+ * reported written, because every strict and legacy write verifies by
+ * readback. Every other fault stays as it is. */
+typedef enum { REPAIR_BLANK, REPAIR_UNCOMMITTED, REPAIR_DAMAGED, REPAIR_COMMITTED, REPAIR_KEEP } repair_kind_t;
+
+static launchcore_persist_status_t repair_classify(persist_bank_t *bank, repair_kind_t *kind,
+    uint32_t *tail, launchcore_persist_strict_info_t *info)
+{
+    bool erased;
+    persist_bank_header_t header;
+    *kind = REPAIR_BLANK;
+    *tail = 0u;
+    if (strict_erased(bank->base, bank->size, &erased) != LAUNCHCORE_PERSIST_OK ||
+        (!erased && launchcore_storage_driver()->read(bank->base, &header, sizeof(header)) != LAUNCHCORE_STORAGE_OK))
+        return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+    if (erased) return LAUNCHCORE_PERSIST_OK;
+    /* A commit word under a damaged header: an interrupted erase of the
+     * non-active bank, never the store's only data (see repair_banks). */
+    *kind = header.committed == PERSIST_COMMITTED ? REPAIR_DAMAGED : REPAIR_UNCOMMITTED;
+    if (!bank_header_valid(&header)) return LAUNCHCORE_PERSIST_OK;
+    *kind = REPAIR_KEEP;
+    if (header.generation == 0u || header.generation == UINT32_MAX) return LAUNCHCORE_PERSIST_OK;
+    *kind = REPAIR_COMMITTED;
+    bank->generation = header.generation;
+    if (strict_erased(bank->base + sizeof(header), align_write(sizeof(header)) - sizeof(header), &erased) !=
+        LAUNCHCORE_PERSIST_OK) return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+    if (!erased) return LAUNCHCORE_PERSIST_OK;
+    strict_cursor_t cursor = {align_write(sizeof(persist_bank_header_t)), 0u};
+    for (;;) {
+        persist_record_header_t record;
+        uint8_t value[LAUNCHCORE_PERSIST_MAX_VALUE_SIZE];
+        bool end;
+        info->health = LAUNCHCORE_PERSIST_HEALTH_UNKNOWN;
+        launchcore_persist_status_t status = strict_next(bank, &cursor, &record, value, &end, info);
+        if (status == LAUNCHCORE_PERSIST_OK) {
+            if (end) { *tail = bank->size; return status; }
+            continue;
+        }
+        if (info->health == LAUNCHCORE_PERSIST_HEALTH_UNKNOWN) return status;
+        if (info->health != LAUNCHCORE_PERSIST_HEALTH_CORRUPT) return LAUNCHCORE_PERSIST_OK;
+        break;
+    }
+    /* Writes program ascending, so a torn append leaves erased bytes after its
+     * own span (or after its header when the header itself is incomplete). */
+    persist_record_header_t torn = {0};
+    if (bank->size - cursor.offset >= sizeof(torn) && launchcore_storage_driver()->read(bank->base + cursor.offset, &torn, sizeof(torn)) != LAUNCHCORE_STORAGE_OK)
+        return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+    const uint32_t after = cursor.offset + align_write(sizeof(torn) +
+        (record_header_valid(&torn, bank->size - cursor.offset) ? torn.value_size : 0u));
+    if (after < bank->size) {
+        if (strict_erased(bank->base + after, bank->size - after, &erased) != LAUNCHCORE_PERSIST_OK)
+            return strict_fault(info, LAUNCHCORE_PERSIST_HEALTH_UNKNOWN);
+        if (!erased) return LAUNCHCORE_PERSIST_OK;
+    }
+    *tail = cursor.offset;
+    return LAUNCHCORE_PERSIST_OK;
+}
+
+static launchcore_persist_status_t repair_erase(const persist_bank_t *bank)
+{
+    return launchcore_storage_driver()->erase(bank->base, bank->size) == LAUNCHCORE_STORAGE_OK ?
+        LAUNCHCORE_PERSIST_OK : LAUNCHCORE_PERSIST_STORAGE_ERROR;
+}
+
+static launchcore_persist_status_t repair_banks(persist_bank_t banks[2], bool *changed,
+    launchcore_persist_strict_info_t *info)
+{
+    repair_kind_t kind[2];
+    uint32_t tail[2];
+    launchcore_persist_status_t status;
+    for (unsigned i = 0u; i < 2u; ++i) {
+        status = repair_classify(&banks[i], &kind[i], &tail[i], info);
+        if (status != LAUNCHCORE_PERSIST_OK) return status;
+        if (kind[i] == REPAIR_KEEP) return LAUNCHCORE_PERSIST_OK;
+    }
+    if (kind[0] != REPAIR_COMMITTED && kind[1] != REPAIR_COMMITTED) {
+        /* Nothing was ever committed: an interrupted provisioning. A once
+         * committed bank with no clean partner is damage, not interruption. */
+        if (kind[0] == REPAIR_DAMAGED || kind[1] == REPAIR_DAMAGED) return LAUNCHCORE_PERSIST_OK;
+        for (unsigned i = 0u; i < 2u; ++i) {
+            if (kind[i] != REPAIR_UNCOMMITTED) continue;
+            *changed = true;
+            status = repair_erase(&banks[i]);
+            if (status != LAUNCHCORE_PERSIST_OK) return status;
+        }
+        return LAUNCHCORE_PERSIST_OK;
+    }
+    const unsigned a = kind[0] != REPAIR_COMMITTED ? 1u : kind[1] != REPAIR_COMMITTED ? 0u :
+        banks[1].generation > banks[0].generation ? 1u : 0u;
+    persist_bank_t *newest = &banks[a], *other = &banks[a ^ 1u];
+    if (tail[a] == 0u) return LAUNCHCORE_PERSIST_OK;
+    if (kind[a ^ 1u] == REPAIR_COMMITTED && newest->generation - other->generation != 1u)
+        return LAUNCHCORE_PERSIST_OK; /* Equal or gapped generations are not interruptions. */
+    if (tail[a] == newest->size) {
+        if (kind[a ^ 1u] == REPAIR_BLANK || (kind[a ^ 1u] == REPAIR_COMMITTED && tail[a ^ 1u] == other->size))
+            return LAUNCHCORE_PERSIST_OK; /* Both banks clean: the fault is not an interrupted write. */
+        *changed = true;
+        return repair_erase(other);
+    }
+    if (newest->generation >= UINT32_MAX - 1u) return LAUNCHCORE_PERSIST_OK;
+    /* Compact the intact prefix into the other bank, commit it, then retire the torn bank. */
+    persist_bank_t prefix = {newest->base, tail[a], newest->generation};
+    uint32_t sequence, end;
+    status = strict_scan(&prefix, info, NULL, NULL, NULL, &sequence);
+    if (status != LAUNCHCORE_PERSIST_OK) return status;
+    *changed = true;
+    status = prepare_bank(other, newest->generation + 1u);
+    if (status == LAUNCHCORE_PERSIST_OK) status = strict_copy_latest(&prefix, other, &end, info);
+    if (status == LAUNCHCORE_PERSIST_OK) status = strict_commit_checked(other, sequence, info);
+    if (status == LAUNCHCORE_PERSIST_OK) status = repair_erase(newest);
+    return status;
+}
+
+launchcore_persist_status_t launchcore_persist_repair_interrupted_strict(
+    launchcore_persist_strict_info_t *info, bool *repaired)
+{
+    if (info == NULL) return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    if (repaired != NULL) *repaired = false;
+    const launchcore_storage_driver_t *storage = launchcore_storage_driver();
+    if (storage == NULL || storage->write == NULL || storage->erase == NULL)
+        return LAUNCHCORE_PERSIST_INVALID_ARGUMENT;
+    persist_bank_t banks[2];
+    launchcore_persist_status_t status = launchcore_persist_probe_strict(info);
+    if (status != LAUNCHCORE_PERSIST_CORRUPT) return status;
+    status = layout_banks(banks);
+    bool changed = false;
+    if (status == LAUNCHCORE_PERSIST_OK) status = repair_banks(banks, &changed, info);
+    if (status != LAUNCHCORE_PERSIST_OK) {
+        if (status == LAUNCHCORE_PERSIST_STORAGE_ERROR) info->health = LAUNCHCORE_PERSIST_HEALTH_UNKNOWN;
+        return status;
+    }
+    if (repaired != NULL) *repaired = changed;
+    return launchcore_persist_probe_strict(info);
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -80,3 +81,23 @@ launchcore_persist_status_t launchcore_persist_delete_strict(uint32_t key,
     launchcore_persist_strict_info_t *info);
 launchcore_persist_status_t launchcore_persist_provision_virgin_strict(uint32_t key,
     const void *value, size_t value_size, launchcore_persist_strict_info_t *info);
+
+/* Opt-in boot repair of interrupted writes, for the exclusive storage owner
+ * before any other storage user exists. It changes storage only when strict
+ * health is CORRUPT/AMBIGUOUS because of a power loss inside a LaunchCore
+ * write, and it never discards a record that a write reported as stored:
+ * - a bank that holds no journal commit (interrupted provisioning,
+ *   compaction or commit, or bytes left by an older flash layout) is erased;
+ *   with no committed bank at all the store returns to VIRGIN;
+ * - a bank with a commit word under a damaged header (an interrupted erase of
+ *   the non-active bank) is erased only beside a clean committed bank;
+ * - an older committed bank beside a clean newer bank is erased;
+ * - a torn final record of the newest bank (every later byte erased within
+ *   one maximal record) is dropped by compacting the intact records into the
+ *   other bank, committing it, then erasing the torn bank.
+ * A corrupt record followed by data, equal or gapped generations, exhausted
+ * generations/sequences and IO errors are left unchanged. Power loss inside
+ * the repair leaves a state this function repairs on the next call. Returns
+ * the strict probe of the result; *repaired (optional) reports a change. */
+launchcore_persist_status_t launchcore_persist_repair_interrupted_strict(
+    launchcore_persist_strict_info_t *info, bool *repaired);

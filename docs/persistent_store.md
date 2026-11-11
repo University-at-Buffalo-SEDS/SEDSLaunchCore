@@ -27,3 +27,26 @@ programming operation.
 Applications should reserve a key for their schema version and migrate records
 after a successful firmware update. This API is for settings and small state
 records, not bulk logs or filesystem workloads.
+
+## Strict journal repair after power loss
+
+The strict reader (`launchcore_persist_probe_strict`/`get_strict`) reports any
+non-blank uncommitted bank or torn record as CORRUPT, so a power loss inside a
+write leaves strict users unable to read the store until it is repaired.
+`launchcore_persist_repair_interrupted_strict()` is the opt-in repair for the
+exclusive storage owner at boot, before any other storage user. It changes only
+states a power loss inside a LaunchCore write can produce, and it never drops a
+record a write reported as stored:
+
+- a bank that holds no journal commit (an interrupted provisioning, compaction
+  or commit, or bytes an older flash layout left there, such as a stale
+  metadata copy) is erased; with no committed bank left the store is VIRGIN;
+- a bank with a commit word under a damaged header is erased only beside a
+  clean committed bank (it was the non-active bank being erased);
+- an older committed bank beside a clean newer one is erased;
+- a torn final record of the newest bank is dropped by compacting the intact
+  records into the other bank, committing it, and erasing the torn bank.
+
+A corrupt record followed by data, equal or gapped generations, exhausted
+generations or sequences, and IO errors are left unchanged. A power loss inside
+the repair leaves a state the next call repairs.
