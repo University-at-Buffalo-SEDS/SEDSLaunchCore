@@ -1,7 +1,7 @@
 # SEDS LaunchCore
 
-Current stable release: **v1.0.0**. CMake consumers should fetch the
-`v1.0.0` tag rather than a development commit. Public interfaces and image
+Current stable release: **v1.1.0**. CMake consumers should fetch the
+`v1.1.0` tag rather than a development commit. Public interfaces and image
 format changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 SEDS LaunchCore is a small STM32 bootloader framework. The bootloader runs from
